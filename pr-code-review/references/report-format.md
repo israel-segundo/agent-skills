@@ -1,8 +1,10 @@
 # Report formats
 
 Two outputs: the **local HTML table** you show the user while reviewing, and the **posted
-PR comment**, which happens only on explicit request. Both use the same four columns so
-the user recognises what they approved.
+PR comment**, which happens only on explicit request. Same findings, same IDs, same
+severities, so the user recognises what they approved — but **not the same shape**: the
+HTML is a four-column table because you control its CSS, and the posted comment is a
+**list, not a table**, because GitHub's rendering can't be controlled at all.
 
 `$WORK/findings.md` stays the source of truth; the HTML is a view of it.
 
@@ -13,7 +15,9 @@ Write a self-contained `.html` to `$WORK` and open it with whatever the host has
 **local**: never a hosted render, an uploaded page, or a published artifact. Refresh it as
 findings change.
 
-- Columns: **# · Finding · Severity · Disposition**.
+- Columns: **# · Finding · Severity · Disposition**. Four is fine *here* because you set
+  the widths. The posted comment gets no table at all (see below) — don't copy this shape
+  into it.
 - Lead the Finding cell with the bold one-line claim; detail underneath.
 - **Theme-aware** — light and dark via `prefers-color-scheme`.
 - Color-coded severity chips (red / amber / grey is enough).
@@ -52,17 +56,33 @@ fall back to something vague.
 **3. Stance paragraph** — **2–4 sentences, no more.** What's genuinely good about the PR,
 what the findings are about, and which (if any) touch its purpose or blast radius.
 
-**4. Findings table** — severity-ranked, stable IDs, exactly these four columns:
+**4. Findings — a severity-ranked list. NOT a table.** One paragraph per finding, stable
+IDs, severity and disposition folded into the text:
 
 ```
-| # | Finding | Severity | Disposition |
-|---|---------|----------|-------------|
-| F1 | **Bold one-line claim.** Then the evidence and failure mode, grounded in a file:line, a test name, or a CI line. | **High** | Fix-before-merge / fast-follow / out of scope. |
+**F1 · High — bold one-line claim.** Then the evidence and failure mode, grounded in a file:line, a test name, or a CI line. _Fix before merge._
+
+**F2 · Low — bold one-line claim.** Evidence, failure mode, cheapest fix. _Author's call._
 ```
 
-Lead each Finding cell with a bold one-sentence claim, then **at most three sentences** of
-detail. If a finding needs more than that, it needs a diagram or a follow-up ticket, not a
-longer cell. Mark out-of-scope items plainly, e.g. "(OUT OF SCOPE)".
+**Never put findings in a markdown table on GitHub — this is the formatting rule that
+always bites, and every "but a table is tidier" instinct is wrong here.** GitHub sizes
+columns to content and then breaks the narrower ones *mid-word* to fit: a `#` column
+renders `F1` stacked as "F / 1", a severity column turns `Medium` into "Me / di / um", and
+dropping to two columns just moves the damage to whichever column is now narrowest. Two
+characters is not too short to be mangled. There is no escape — GitHub strips style
+attributes, `<colgroup>` and `nowrap` are sanitised away, and `&nbsp;` doesn't prevent a
+mid-word break. **A single column of prose is the only shape that survives, and that's a
+list.** It also reads more like a person wrote it, which is the point.
+
+Lead each finding with `**F<n> · <Severity> — <one-sentence claim>.**`, then **at most three
+sentences** of detail, then the disposition in italics (`_Fix before merge._`,
+`_Fast-follow._`, `_Author's call._`, `_Out of scope._`). If a finding needs more than that,
+it needs a diagram or a follow-up ticket, not a longer paragraph. Order the list by severity
+so it still scans top to bottom.
+
+The local HTML table is where a real table belongs — you control its CSS there, and the
+user reads it in a browser, not in a 700px PR column.
 
 **5. Verified while reviewing** — **one short paragraph**, or a tight bullet list if it
 reads better. What you actually checked: which checks you ran and their result, which

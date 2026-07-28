@@ -385,12 +385,14 @@ instead of rediscovering them. Offer it; don't write into the user's repo unaske
 NEVER post without explicit confirmation. **Dedupe against existing reviews first** (Step
 1, bots included): drop anything another reviewer already raised. The one exception is
 **High** severity — worth restating, but say so plainly ("also flagged by @alice —
-repeating because it's High"). If dedup empties the table, say "nothing to add beyond the
-existing reviews" rather than posting points already made.
+repeating because it's High"). If dedup empties the findings, say "nothing to add beyond
+the existing reviews" rather than posting points already made.
 
 Build the comment per `references/report-format.md` — title, one-sentence disclosure
-naming the model, stance paragraph, severity-ranked findings table, "verified while
-reviewing" paragraph including limits, suggested split. Write the body to a file, then:
+naming the model, stance paragraph, severity-ranked findings **as a list, never a markdown
+table** (GitHub breaks narrow table columns mid-word — the reference explains it),
+"verified while reviewing" paragraph including limits, suggested split. Write the body to a
+file, then:
 
 ```sh
 gh pr comment "$PR" --body-file "$WORK/review.md"      # never inline a heredoc
@@ -399,11 +401,11 @@ gh pr comment "$PR" --body-file "$WORK/review.md"      # never inline a heredoc
 **Add inline comments when a finding points at a line.** A guard on the wrong branch, a
 key its caller no longer matches, an assertion that proves nothing — anchor those to the
 line; the reader shouldn't have to hunt. Findings about something *absent* (a missing test,
-an unset variable, no protection rule) or spread across files stay in the table, where they
-belong. A few anchors, 1–3 sentences each, each led by its finding ID. Post them and the
-summary as **one review** via the `gh api ... --input` payload in
+an unset variable, no protection rule) or spread across files stay in the summary list,
+where they belong. A few anchors, 1–3 sentences each, each led by its finding ID. Post them
+and the summary as **one review** via the `gh api ... --input` payload in
 `references/report-format.md`, and show the user the exact list — path, line, text — before
-posting. Never one comment per table row: that's a linter, not a review.
+posting. Never one comment per finding: that's a linter, not a review.
 
 **Tone — write like a person, not a linter.** Relaxed, plain, first-person, short
 sentences, no hedging stacks. Respect the length caps in `references/report-format.md`: the
@@ -485,8 +487,8 @@ characters: `A["service (prod)"]`. Make ONE gap obvious; don't redraw the whole 
 - **Plain language, always — and short.** The reader is a colleague, not a linter. Respect
   the length caps; if it reads robotic or runs long, rewrite it before showing the user.
 - **Anchor a finding where the reader has to look.** Line-level findings get an inline
-  comment; absent-thing and cross-file findings stay in the table. A few anchors, never one
-  per row.
+  comment; absent-thing and cross-file findings stay in the summary list. A few anchors,
+  never one per finding.
 - **Name the model.** The disclosure is one sentence and says which model helped, what it
   checked, and that a human challenged it.
 - **Close the loop, but never on autopilot.** Findings → HTML table → posted comment →
