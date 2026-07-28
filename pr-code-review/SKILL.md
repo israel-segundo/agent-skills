@@ -1,21 +1,22 @@
 ---
 name: pr-code-review
 description: >-
-  Adversarially review a branch's open pull request in any repo, as a human-in-the-loop
-  sparring session rather than a checklist pass. Learns the repo's own documented rules,
+  Adversarially review a branch's open PR in any repo as a human-in-the-loop sparring
+  session, not a checklist pass. Learns the repo's own documented rules,
   names the PR's central claim, then verifies that claim against real evidence — runs the
   repo's own checks on the PR head in a throwaway worktree, reads the CI run and its
   artifacts, checks the issue's acceptance criteria — before scanning the diff for blast
   radius, irreversibility, broken contracts, secrets, and weak tests. Tracks findings with
   IDs and severities, shows them as a local HTML table, and only on explicit request posts
-  a severity-ranked review comment (deduped against existing reviews, disclosed as
-  LLM-aided but human-driven) and offers an approval decision. Use when pressure-testing
-  someone else's PR, especially where its value is a claim like "this only touches X",
+  a severity-ranked comment plus inline comments where a finding points at a line — deduped,
+  and disclosed in one sentence naming the model — then offers an approval
+  decision. Use when pressure-testing
+  someone else's PR, where its value is a claim like "this only touches X",
   "nothing is destroyed", "it's backwards compatible", or "a test covers it". Never posts,
   approves, pushes, or mutates anything without confirmation.
 license: Unlicense
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your
@@ -60,11 +61,18 @@ Two rules make this work in an unfamiliar repo:
    were added" is not evidence — an assertion that still passes with the production
    change reverted proves nothing.
 
-**Plain language, the whole way through — not just in the posted comment.** Every answer,
-finding, and summary should read like a colleague talking, not a report generator. Short
-sentences. Everyday words. Say "this file is shared by every environment, so editing it
-re-plans all of them" rather than "this mutates a shared root-module invariant across the
-environment cross-product." If a sentence has three qualifiers stacked up, cut two.
+**Plain language and short, the whole way through — not just in the posted comment.** Your
+reader is a colleague, not a linter. Every answer, finding, and summary should sound like
+someone talking. Short sentences. Everyday words. Say "this file is shared by every
+environment, so editing it re-plans all of them" rather than "this mutates a shared
+root-module invariant across the environment cross-product." If a sentence has three
+qualifiers stacked up, cut two.
+
+**No blobs of text.** A finding is one bold claim plus a couple of sentences. An answer in
+the challenge loop is a few lines, not an essay. Nobody reads the third paragraph — if a
+point needs one, it needs a diagram or a follow-up ticket instead. Concrete beats abstract:
+"someone deletes the variable, cuts a release, and sees a green check" lands where
+"insufficient enforcement of the configuration invariant" doesn't.
 
 ### Guardrails (they apply throughout)
 
@@ -89,7 +97,8 @@ environment cross-product." If a sentence has three qualifiers stacked up, cut t
 - `references/safety-scan.md` — the 14 scan dimensions for Step 6, with what counts as a
   finding in each.
 - `references/report-format.md` — the HTML findings table spec, the posted-comment shape,
-  and the required disclosure wording.
+  the inline-comment rules and payload, the required one-sentence disclosure, and the
+  length caps.
 
 ---
 
@@ -109,6 +118,9 @@ Also note, without assuming any of it: whether the host offers a **code-review**
 (`xdg-open`, `open`, `wslview` — otherwise print the path for the user to open), and
 whether it can read files and search text (every host can; use whatever it provides — the
 commands below are the portable fallback).
+
+Note **which model and version you are running as** (e.g. "Claude Opus 5") — the disclosure
+line on any posted comment has to name it. If you don't know, ask the user before posting.
 
 Say which capabilities you have and which you don't. A missing capability changes what
 you can claim later.
@@ -376,16 +388,28 @@ NEVER post without explicit confirmation. **Dedupe against existing reviews firs
 repeating because it's High"). If dedup empties the table, say "nothing to add beyond the
 existing reviews" rather than posting points already made.
 
-Build the comment per `references/report-format.md` — title, required disclosure
-blockquote, stance paragraph, severity-ranked findings table, "verified while reviewing"
-paragraph including limits, suggested split. Write the body to a file, then:
+Build the comment per `references/report-format.md` — title, one-sentence disclosure
+naming the model, stance paragraph, severity-ranked findings table, "verified while
+reviewing" paragraph including limits, suggested split. Write the body to a file, then:
 
 ```sh
 gh pr comment "$PR" --body-file "$WORK/review.md"      # never inline a heredoc
 ```
 
-**Tone — write like a person, not a linter.** Relaxed, plain, first-person. Short
-sentences. No hedging stacks. It should read like a colleague who did the homework.
+**Add inline comments when a finding points at a line.** A guard on the wrong branch, a
+key its caller no longer matches, an assertion that proves nothing — anchor those to the
+line; the reader shouldn't have to hunt. Findings about something *absent* (a missing test,
+an unset variable, no protection rule) or spread across files stay in the table, where they
+belong. A few anchors, 1–3 sentences each, each led by its finding ID. Post them and the
+summary as **one review** via the `gh api ... --input` payload in
+`references/report-format.md`, and show the user the exact list — path, line, text — before
+posting. Never one comment per table row: that's a linter, not a review.
+
+**Tone — write like a person, not a linter.** Relaxed, plain, first-person, short
+sentences, no hedging stacks. Respect the length caps in `references/report-format.md`: the
+disclosure is one sentence, a findings cell is a claim plus at most three sentences, an
+inline comment is 1–3 sentences. It should read like a colleague who did the homework, not
+a generated report.
 
 ## Step 11 — Offer to approve (or not)
 
@@ -402,6 +426,10 @@ After posting, **offer a decision** — don't leave it implicit.
 State which you'd pick and why, in plain language, then wait. **Never approve or request
 changes without explicit confirmation.** Keep it short and human, write it to a file
 first, and mention the author when there's something to act on.
+
+If the decision carries inline comments, send it as one review instead: the same
+`gh api "repos/{owner}/{repo}/pulls/$PR/reviews" --input` payload with
+`"event": "APPROVE"` or `"REQUEST_CHANGES"`.
 
 Offer to clean up the worktree and `$WORK` once the session is done — don't remove them
 while the user might still want to poke at them.
@@ -454,7 +482,13 @@ characters: `A["service (prod)"]`. Make ONE gap obvious; don't redraw the whole 
 - **Be honest about limits.** A check you couldn't run, an environment you couldn't
   sample, a consumer in another repo you can't see — say the claim is unverified rather
   than guessing.
-- **Plain language, always.** If it reads robotic, rewrite it before showing the user.
+- **Plain language, always — and short.** The reader is a colleague, not a linter. Respect
+  the length caps; if it reads robotic or runs long, rewrite it before showing the user.
+- **Anchor a finding where the reader has to look.** Line-level findings get an inline
+  comment; absent-thing and cross-file findings stay in the table. A few anchors, never one
+  per row.
+- **Name the model.** The disclosure is one sentence and says which model helped, what it
+  checked, and that a human challenged it.
 - **Close the loop, but never on autopilot.** Findings → HTML table → posted comment →
   approve-or-not. Offer each step; do none of the posting or approving without explicit
   confirmation.
