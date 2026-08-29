@@ -16,7 +16,7 @@ description: >-
   approves, pushes, or mutates anything without confirmation.
 license: Unlicense
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your
@@ -161,6 +161,13 @@ points other reviewers already raised, each tagged with who raised it.
   counts as "already raised".
 - **Watch the author's replies.** A point the author already answered or pushed back on
   isn't fresh; treat it as raised, not new.
+- **Read the bodies in full, not the first 500 characters.** A long review's real findings
+  sit under a compliance table, and truncated output hides exactly the section that would
+  have deduped your best finding. Dump them to a file and read it.
+- **This scan goes stale, and a busy PR accretes comments while you work.** It is the
+  *first* scan, not the only one — Step 10 repeats it before anything is posted. Say so
+  when you present findings, so nothing you claim as "new" is asserted more confidently
+  than a scan that could be an hour old.
 
 ## Step 2 — Learn the repo's rules
 
@@ -372,21 +379,90 @@ to undo.
 Note the cheapest concrete fix and a disposition (fix-before-merge / follow-up /
 nice-to-have). Be explicit that nothing blocks merge unless it truly does.
 
-## Step 9 — (Optional) save what you learned
+## Step 9 — Close the loop on what you learned
 
-If the repo has strong domain-specific rules, offer to distil the profile into a
-repo-local skill of this same name (`.claude/skills/pr-code-review/`,
+Every run teaches something. Offer all three of the below; write none of them unasked.
+
+**1. A repo-local skill.** If the repo has strong domain-specific rules, offer to distil
+the profile into a repo-local skill of this same name (`.claude/skills/pr-code-review/`,
 `.agents/skills/pr-code-review/`, or wherever this host looks) — a directory-scoped skill
 of the same name takes precedence, so the next review starts with the specifics known
-instead of rediscovering them. Offer it; don't write into the user's repo unasked.
+instead of rediscovering them.
+
+**2. Improvements to this skill.** The review just exercised these instructions against a
+real PR; where they cost you time or let something through is data. Propose concrete edits,
+not sentiments. Draw them from what actually happened this run:
+
+- **A finding you nearly missed, and what would have caught it.** If a scan dimension has
+  no prompt for it, that's a missing line in `references/safety-scan.md`.
+- **A finding another reviewer caught and you didn't** (the HTML-only section, Step 10) —
+  the single richest source. Ask what question they asked that you didn't.
+- **A step that produced nothing on this repo type.** Worth narrowing or making
+  conditional, not deleting.
+- **A mistake you made and corrected mid-run** — a wrong assumption, a claim you had to
+  walk back, a check you ran twice because the first was scoped wrong.
+- **A verification that turned an argument into evidence.** If rendering the artifact,
+  running the pure function, or reading the emulator's source settled a question the diff
+  couldn't, that technique belongs in Step 4.
+
+Keep the skill's own bar: cite the specific run, and don't add a rule for a thing that
+happened once and cost nothing.
+
+**3. Gaps in the repo's own guardrails.** Distinct from a finding about *this PR* — this is
+about the rules the repo writes for itself. You read `CLAUDE.md` / `AGENTS.md` /
+`CONTRIBUTING.md` / the constitution in Step 2 and then spent a whole review testing them
+against real code. Report where they fall short:
+
+- **A rule that exists but nothing enforces it.** The most common gap. A MUST with no test,
+  lint rule, or CI check behind it is a convention, and saying so is useful.
+- **A rule enforced in one direction only.** A guard that catches over-claiming but not
+  under-claiming, a check that runs on added files but not removed ones.
+- **A convention the codebase follows that nothing writes down** — the next contributor,
+  human or agent, has to infer it from surrounding code.
+- **A rule the diff violated without anyone noticing**, including CI. That's an enforcement
+  gap, not just an author mistake.
+- **A rule that is stale or contradicted** by what the code now does.
+
+Frame each as *rule → where it's stated → what actually enforces it (or nothing) → the
+cheapest thing that would.* Offer to file these as tickets or as a doc PR; they are usually
+somebody's else's work, so hand them over rather than acting on them.
 
 ## Step 10 — Post (only when the user asks)
 
-NEVER post without explicit confirmation. **Dedupe against existing reviews first** (Step
-1, bots included): drop anything another reviewer already raised. The one exception is
-**High** severity — worth restating, but say so plainly ("also flagged by @alice —
-repeating because it's High"). If dedup empties the findings, say "nothing to add beyond
-the existing reviews" rather than posting points already made.
+NEVER post without explicit confirmation.
+
+**Re-run the existing-review scan before you dedupe — do not reuse Step 1's list.** Reviews
+land while you work, and the ones that arrive mid-session are the likeliest to collide with
+what you found. Fetch again, read the new bodies in full, and dedupe against the *current*
+state:
+
+```sh
+gh pr view "$PR" --json reviews,comments > "$WORK/comments.json"   # read the bodies in full
+gh api --paginate "repos/{owner}/{repo}/pulls/$PR/comments"        # inline comments too
+```
+
+Then dedupe (bots included) and classify every finding as one of:
+
+- **New** — nobody raised it. Post it.
+- **Duplicate** — someone raised the same claim with the same evidence. Drop it entirely,
+  and say in your summary that you dropped it and to whom it belongs. The one exception is
+  **High** severity — worth restating, but say so plainly ("also flagged by @alice —
+  repeating because it's High").
+- **Partly new** — the finding overlaps but yours adds a distinct claim. Post only the
+  addition, and name the overlap.
+- **Correction** — someone raised it and got it wrong, or dismissed it on a premise that
+  doesn't hold. Post it, lead with whose point it corrects, and show the premise failing.
+  Verify the premise yourself before calling it a correction.
+- **Folded in** — it belongs as one more item on a check another reviewer already asked
+  for. Post it as an addition addressed to them, not as a standalone finding.
+
+If dedup empties the findings, say "nothing to add beyond the existing reviews" rather than
+posting points already made.
+
+**The "raised by others, missed by me" section is HTML-only.** Record what other reviewers
+caught that you didn't — it is the most useful thing in the report for the user, and it
+must never appear in the posted comment, where it reads as noise to everyone but you.
+Spec in `references/report-format.md`.
 
 Build the comment per `references/report-format.md` — title, one-sentence disclosure
 naming the model, stance paragraph, severity-ranked findings **as a list, never a markdown

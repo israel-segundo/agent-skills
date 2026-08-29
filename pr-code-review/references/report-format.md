@@ -28,6 +28,26 @@ findings change.
 - Multi-item dispositions render as a real `<ul>`, not a run-on inline list.
 - Inline all CSS. No CDN, no external fonts — it must open offline.
 
+Once the dedup in Step 10 has run, add a **fifth column, "Vs. existing"** — New / Partly new
+/ Correction / Folded in / Duplicate — and keep the dropped rows in the table, muted, with
+one line saying whose finding they duplicate. A dropped row is evidence you checked;
+deleting it looks like you never found it. A small count strip above the table (`5 new · 1
+correction · 1 folded in · 1 duplicate`) is worth the twenty lines of CSS.
+
+### "Raised by others, missed by me" — HTML only, and required
+
+Below the findings table, list what other reviewers caught that you didn't, each with a
+one-line note on what it is and — where you can tell — why you missed it. Verify each one
+before repeating it; another reviewer's claim is not evidence, and confirming or refuting it
+is part of the value.
+
+**This section never appears in the posted comment.** On the PR it reads as noise to
+everyone except you: the author already has those points, and restating them buries your
+actual findings. In the local report it's the most useful thing on the page — it's the only
+place the review's blind spots are visible, and it's the raw material for Step 9's skill
+improvements. Include it even when it's empty; "nothing others found that I didn't" is
+itself a result, and an absent section reads as a skipped check.
+
 ## The posted PR comment
 
 Exact shape, in order:
