@@ -5,14 +5,14 @@ description: >-
   cycle ends as one clean commit instead of a trail of "address review comment" commits.
   Stages only the files that belong — by name, never `git add -A` — leaves generated output
   alone, refuses to stage anything that looks like a secret, then rewrites the commit
-  message with an `## Amendments` round listing each file and what changed in it. Checks
-  whether the commit is already published before rewriting it, and says what the next push
-  will need. Use when you have just made review fixes on top of a commit you own and want
+  message with an `## Amendments` round listing each file and what changed in it. Fetches and
+  checks whether the commit is already published — and whether it is still the tip of its own
+  remote branch — before rewriting it, and says what the next push will need. Use when you have just made review fixes on top of a commit you own and want
   them absorbed into it rather than stacked on top of it. Never pushes, never force-pushes,
   and stops to ask before rewriting a commit that anyone else could already have pulled.
 license: Unlicense
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your
@@ -39,8 +39,10 @@ rather than that commit followed by four commits called "fix review comment".
 **The defining stance: an amend rewrites history, so know whose history you're rewriting
 before you do it.** On an unpushed commit it's free. On a commit that's already on your own
 feature branch upstream it costs a `--force-with-lease`. On a commit anyone else may have
-pulled it costs them a conflict, and you don't get to make that call for them. Step 0
-establishes which case you're in, and everything after it is conditional on the answer.
+pulled it costs them a conflict, and you don't get to make that call for them. And on a
+commit that *isn't the tip of its own remote branch*, the force-push costs you every remote
+commit after it — silently, with nothing conflicting. Step 0 establishes which case you're
+in, and everything after it is conditional on the answer.
 
 **Plain language and short.** Your reader is a colleague, not a linter. The per-file
 summaries you write into the commit message are ten words each, in everyday words — "fix
@@ -83,15 +85,42 @@ REMOTE=${UPSTREAM%%/*}; REMOTE=${REMOTE:-$(git -C "$REPO" remote | head -1)}
 git -C "$REPO" remote set-head "$REMOTE" -a >/dev/null 2>&1 || true   # populate the ref if missing
 DEFAULT=$(git -C "$REPO" symbolic-ref --quiet --short "refs/remotes/$REMOTE/HEAD" 2>/dev/null | sed "s|^$REMOTE/||")
 [ -n "$DEFAULT" ] || DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || true)
+git -C "$REPO" fetch "$REMOTE" "$BRANCH" 2>/dev/null || true   # may not exist on the remote yet
+TRACKING=${UPSTREAM:-$REMOTE/$BRANCH}
 git -C "$REPO" branch -r --contains HEAD          # which remote branches already have this commit
+git -C "$REPO" rev-parse --verify --quiet "refs/remotes/$TRACKING" >/dev/null \
+  && git -C "$REPO" rev-list --left-right --count "HEAD...$TRACKING"   # prints "<ahead> <behind>"
 ```
 
-Decide from that last line, and say out loud which case you're in:
+**Fetch before you judge any of this.** Remote-tracking refs are only as fresh as the last
+fetch, and this worktree may never have fetched since the branch was pushed from somewhere
+else. Without it, "nothing contains this commit — unpushed, amend freely" is a conclusion
+drawn from a stale ref about a commit that has been on the remote for days.
 
-- **Nothing contains it** — unpushed. Amend freely; the next push is an ordinary one.
-- **Only `$UPSTREAM` contains it** — normal review-cycle case. Amend, and tell the user the
-  next push needs `--force-with-lease`.
-- **`$REMOTE/$DEFAULT` contains it, or any branch that isn't `$UPSTREAM`** — **stop.** This
+**`--contains` answers "is it *in* the branch", not "is it the *tip*".** That difference is
+the whole hazard: a commit two behind the tip is still "contained by `$TRACKING`", which
+reads as the ordinary review-cycle case — so you amend it and force-push, and the two newer
+remote commits are gone. The `rev-list` counts are what separate the two, so read them
+before deciding.
+
+Decide from all three outputs, and say out loud which case you're in:
+
+- **behind > 0 — `HEAD` is not the branch tip. Stop.** The remote branch has commits your
+  local branch doesn't, so `HEAD` is not the commit a reviewer is looking at, and the
+  force-push an amend requires would delete everything after it. Don't amend, and don't move
+  the branch yourself — that's outside this skill. Show what's missing and hand it back:
+  ```sh
+  git -C "$REPO" log --oneline "HEAD..$TRACKING"     # what the local branch is missing
+  ```
+  If local is *strictly* behind (ahead = 0), the fix is usually `git -C "$REPO" merge
+  --ff-only "$TRACKING"` and then re-running this skill — the commit they meant to amend is
+  the tip they don't have yet. If it's **diverged** (ahead > 0 and behind > 0), say so and
+  stop there; sorting out a diverged branch is `/git-rebase`'s job, not this one.
+- **Nothing contains it** (and not behind) — unpushed. Amend freely; the next push is an
+  ordinary one.
+- **Only `$TRACKING` contains it, and `HEAD` is its tip** — normal review-cycle case. Amend,
+  and tell the user the next push needs `--force-with-lease`.
+- **`$REMOTE/$DEFAULT` contains it, or any branch that isn't `$TRACKING`** — **stop.** This
   is shared history. Explain that amending would rewrite a commit other people may have
   pulled, and offer a new commit on top instead. Only proceed on explicit confirmation.
 
@@ -197,6 +226,11 @@ out, and the new message. Then state the push the user will need, and don't run 
 - already on its upstream → `git push --force-with-lease "$REMOTE" "$BRANCH"`, never a bare
   `--force`
 
+`--force-with-lease` is not a safety net against the Step 0 hazard, so don't present it as
+one: its lease is the remote-tracking ref, and if you fetched in Step 0 that ref already
+matches the remote, so the push proceeds and takes the newer commits with it. Step 0 is the
+only thing standing between an amend and that outcome.
+
 Mention `$WORK` if they might want the drafts; otherwise leave it for the OS to clean up.
 
 ---
@@ -206,6 +240,9 @@ Mention `$WORK` if they might want the drafts; otherwise leave it for the OS to 
 - **Know whose history you're rewriting.** Unpushed is free, your own upstream costs a
   `--force-with-lease`, shared costs someone else a conflict — and that one isn't yours to
   decide.
+- **Amend the tip, or don't amend.** Fetch first, then confirm `HEAD` *is* the tip of its
+  remote branch, not merely contained by it. `--contains` says yes to a commit ten behind the
+  tip, and the force-push that follows deletes those ten. `--force-with-lease` won't stop it.
 - **Stage by name.** `git add -A` is how artifacts and credentials get into history.
   Explicit paths make the mistake visible before it's permanent.
 - **Say what you left out.** A file you silently skipped looks identical to a file you

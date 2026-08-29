@@ -2,7 +2,8 @@
 name: pr-address-feedback
 description: >-
   Take the new review feedback on the current branch's open pull request and drive it to
-  done. Reads the comments posted since the remote head, translates and validates each one
+  done. Reads the comments posted since the remote head, confirms the local branch isn't
+  behind that head before trusting anything it reads, translates and validates each one
   against the actual code, then renders the consolidated plan as a local HTML report and
   waits for sign-off before changing anything. Applies the valid fixes blocking-first,
   files a real ticket for everything deferred and records what was declined, runs the
@@ -13,7 +14,7 @@ description: >-
   pushing sees only genuinely new comments, and does nothing at all when there are none.
 license: Unlicense
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your
@@ -63,8 +64,9 @@ up, cut two.
   this skill is *not* standing consent, and a user-level rule against unprompted pushes
   overrides anything here.
 - **Never push to the default branch or any protected branch.** This skill only ever pushes
-  the current feature branch, and only ever with `--force-with-lease` when the remote has
-  diverged — never a bare `--force`.
+  the current feature branch. The one state that justifies `--force-with-lease` is a local
+  branch that is *ahead-only* after a rebase — never a bare `--force`, and never as a way to
+  defeat a rejected push. If the local branch is behind or diverged, **stop** (Step 1).
 - **Read the command before you run it.** The repo's "test" script may migrate a database,
   seed shared state, or hit a live service. Skim it first, and honor documented
   prohibitions.
@@ -108,6 +110,7 @@ items land, not whether they're recorded.
 ```sh
 gh pr view --json number,headRefName,headRefOid,url,state,baseRefName
 OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+HEAD_OID=$(gh pr view --json headRefOid -q .headRefOid)   # the PR's head ON THE REMOTE
 ```
 
 No open PR for this branch → stop and say so.
@@ -116,12 +119,19 @@ No open PR for this branch → stop and say so.
 `headRefOid`:
 
 ```sh
-gh api "repos/$OWNER_REPO/commits/$HEAD_OID" --jq '.commit.committer.date'
+CUTOFF=$(gh api "repos/$OWNER_REPO/commits/$HEAD_OID" --jq '.commit.committer.date')
 ```
 
-Only comments created or updated **after** that timestamp are in scope. This is the whole
+Only comments created **or updated** after that timestamp are in scope. This is the whole
 idempotency mechanism: once your fixes are pushed, the cutoff advances and the comments you
 just handled fall out of scope on the next run.
+
+> **`updated_at`, not just `created_at` — this one silently loses findings.** Review bots
+> commonly **upsert a single comment**: they re-run on your new head and *edit the existing
+> comment in place* (look for an HTML marker like `<!-- claude-code-review -->`). The edited
+> body holds brand-new blocking findings while `created_at` stays pinned to the *original*
+> post, which is now behind the cutoff. Filter on `created_at` alone and a fresh "Must Fix"
+> reads as already-handled. Always compare `max(created_at, updated_at)`.
 
 > **If the branch was just rebased,** the remote head may be older than your local head. The
 > cutoff is still the remote's committer date — comments are timestamped against what
@@ -130,24 +140,88 @@ just handled fall out of scope on the next run.
 Resolve the remote and base branch per `references/discovery.md`, and read the repo's own
 rules while you're there.
 
+**Then check the local branch against that remote head — before validating a single finding.**
+
+```sh
+git -C "$REPO" fetch "$REMOTE" "$BRANCH" 2>/dev/null || true
+git -C "$REPO" cat-file -e "$HEAD_OID^{commit}" 2>/dev/null \
+  && git -C "$REPO" rev-list --left-right --count "HEAD...$HEAD_OID"   # "<ahead> <behind>"
+```
+
+If the fetch can't produce that object, say so and stop rather than reasoning past it — a
+head you can't resolve locally is not a head you can validate against.
+
+- **behind = 0** — the local tree has everything the remote does. Carry on.
+- **ahead = 0, behind > 0 — stop.** The remote branch has commits this worktree doesn't.
+- **diverged (both > 0) — stop.** Hand it to `/git-rebase`; untangling that isn't this
+  skill's job.
+
+**Why this gate sits before Step 4 and not next to the push:** Step 4 validates each finding
+by opening the referenced file and deciding whether the issue is real and still present. If
+the local branch is behind, those files are *not what the reviewer commented on* — so a
+finding already fixed on the remote reads as "still present" and gets fixed a second time,
+and a finding that refers to newer remote code reads as "invalid, file doesn't look like
+that" and gets skipped. Both failures look exactly like careful validation. The skill's
+central promise inverts silently, and the report records the wrong answer with a confident
+reason attached.
+
+The push hazard is the same root cause arriving later: a plain push from a behind branch is
+*rejected*, which is the one loud symptom — see Step 9 for why that rejection must not be
+escalated into a force.
+
+To recover, the user fast-forwards (`git -C "$REPO" merge --ff-only "$REMOTE/$BRANCH"`) and
+re-runs. Don't move the branch yourself: this skill has a working tree full of pending edits
+by the time anyone notices, and its remit is review comments, not branch surgery.
+
 ## Step 2 — Collect the new comments
 
 Three sources, and missing one looks exactly like ignoring it. **Paginate** — the default
-caps at 30:
+caps at 30. Filter each source on `max(created_at, updated_at)` so an edited-in-place comment
+still counts (see the warning in Step 1):
 
 ```sh
-gh api --paginate "repos/$OWNER_REPO/pulls/$PR/comments" \
-  --jq '.[] | {id, login: .user.login, created_at, updated_at, path, line, in_reply_to: .in_reply_to_id, body}'
-gh api --paginate "repos/$OWNER_REPO/pulls/$PR/reviews" \
-  --jq '.[] | {login: .user.login, state, submitted_at, body}'
-gh pr view --json comments
+# 1. Inline review comments — the resolvable threads.
+gh api --paginate --slurp "repos/$OWNER_REPO/pulls/$PR/comments" \
+  | jq --arg cut "$CUTOFF" '[ .[][]
+      | select(([.created_at, .updated_at] | max) > $cut)
+      | {id, login: .user.login, created_at, updated_at, path, line,
+         in_reply_to: .in_reply_to_id, body} ]' > "$WORK/inline.json"
+
+# 2. Review summaries. NOTE: these carry `submitted_at` and NO `updated_at`, so an edited
+#    review body is undetectable here — a re-review normally arrives as a NEW review, but if a
+#    reviewer says they updated one, read it regardless of timestamp.
+gh api --paginate --slurp "repos/$OWNER_REPO/pulls/$PR/reviews" \
+  | jq --arg cut "$CUTOFF" '[ .[][]
+      | select(.submitted_at > $cut)
+      | {login: .user.login, state, submitted_at, body} ]' > "$WORK/reviews.json"
+
+# 3. Issue-level (top-level) comments — where upserting bots live.
+#    Use the REST endpoint, NOT `gh pr view --json comments`: that projection exposes
+#    `createdAt` but NOT `updatedAt`, so it CANNOT see an edited-in-place comment at all.
+gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR/comments" \
+  | jq --arg cut "$CUTOFF" '[ .[][]
+      | select(([.created_at, .updated_at] | max) > $cut)
+      | {id, login: .user.login, created_at, updated_at, body} ]' > "$WORK/issue-comments.json"
 ```
+
+(`--paginate --slurp` wraps the pages as an array of arrays, hence `.[][]` to flatten. Note
+`--slurp` **cannot** be combined with `gh`'s own `--jq` flag — it errors out — so pipe to a
+separate `jq` as above. That also lets you pass `--arg cut`, which `gh --jq` has no way to do.)
 
 Inline review comments are the resolvable threads. Review summaries and issue-level comments
 carry real findings but can't be resolved — they get fixed, not closed out.
 
-Filter to the cutoff, and write the in-scope set to `$WORK/comments.json` so later steps read
-it from disk.
+**Sanity-check the sweep before trusting it.** If all three files come back empty, confirm that
+against the PR's newest activity rather than concluding "no new feedback" — compare the largest
+`updated_at` in the repo's comments against `$CUTOFF`:
+
+```sh
+gh api --paginate --slurp "repos/$OWNER_REPO/issues/$PR/comments" \
+  | jq -r '[.[][] | .updated_at] | max as $m | "newest issue-comment update: \($m)"'
+```
+
+A timestamp newer than `$CUTOFF` with an empty in-scope set means the filter is wrong, not that
+the reviewers went quiet.
 
 ## Step 3 — Classify the reviewers
 
@@ -252,8 +326,16 @@ wave a failure off as pre-existing without proving it on the base branch first.
 
 ```sh
 git -C "$REPO" push "$REMOTE" "$BRANCH"
-git -C "$REPO" push --force-with-lease "$REMOTE" "$BRANCH"   # only if the branch was rebased
+git -C "$REPO" push --force-with-lease "$REMOTE" "$BRANCH"   # ONLY if Step 1 said ahead-only
 ```
+
+**A rejected push is not a reason to force.** `! [rejected] ... (non-fast-forward)` means the
+remote has commits you don't — the Step 1 condition, arriving late because someone pushed
+while you worked. Escalating to `--force-with-lease` there **deletes those commits**, and the
+lease does not stop it: the lease compares against your remote-tracking ref, which your own
+Step 1 fetch already brought level with the remote, so the push is judged intentional. Stop,
+say the branch moved underneath the run, and let the user fast-forward and re-run. The only
+state that justifies the force is the one Step 1 confirmed as ahead-only after a rebase.
 
 A pre-push hook may re-run the checks — let it. If it fails, fix and retry; never disable the
 hook to get past it. If the push is refused by the host or a standing rule, **stop and ask** —
@@ -280,9 +362,15 @@ job, or CI:
 - Each run recomputes the cutoff from the *current* remote head, so once fixes are pushed,
   those comments are no longer in scope and won't be handled twice.
 - If Step 4 finds nothing to change, it exits cleanly — no report, no commit, no push, no
-  threads touched. "No new feedback" is the expected quiet outcome.
+  threads touched. "No new feedback" is the expected quiet outcome. But run Step 2's
+  sanity-check first: an unattended run that mis-filters on `created_at` reports exactly the
+  same quiet outcome as a genuinely idle PR, and nobody is watching to notice the difference.
 - Only human threads tied to in-scope findings get replied to, so a re-run doesn't spam
   threads that are already closed out.
+- **The Step 1 sync gate matters most here.** Unattended runs are the ones that stack up on a
+  branch someone else pushed to, and a behind-by-one worktree produces a full report of
+  confidently-wrong validations with nobody reading it. Behind or diverged → stop and report,
+  the same as with a human present.
 - **Non-interactive is not a licence to skip the gates.** Without a human to answer, still
   write and refresh the report as the record, apply the smallest correct fix, defer anything
   ambiguous to a ticket rather than deciding it — and treat the push and post confirmations
@@ -294,8 +382,16 @@ job, or CI:
 
 - **Nothing evaporates.** Every finding is fixed, ticketed, recorded as declined, or skipped
   with a reason — and the deferred ones exist somewhere durable before anything is pushed.
+- **Scope on `max(created_at, updated_at)`, never `created_at` alone.** Bots upsert: they edit
+  one comment in place on every re-run, so a new blocking finding can arrive under an old
+  timestamp. `gh pr view --json comments` cannot express this — it has no `updatedAt` — so use
+  the REST issue-comments endpoint.
 - **Validate before you act.** A review comment is a claim about the code. Open the file.
   Applying an invalid finding leaves the code wrong *and* the reviewer satisfied.
+- **Validate against the tree the reviewer saw.** Confirm the local branch isn't behind the
+  PR's remote head *before* Step 4, or every validation runs against the wrong file contents
+  and fails in both directions at once — already-fixed reads as still-broken, newer code reads
+  as invalid. A stale worktree makes careful validation produce confident nonsense.
 - **Confirm before you change the world.** The report is the gate: sign-off on the plan
   before the edits, and a separate yes before the push and the replies.
 - **Blocking first, in isolation.** Surface the bad assumption early, not at the bottom of a
