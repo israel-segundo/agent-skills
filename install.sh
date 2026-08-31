@@ -7,6 +7,7 @@
 # new host.
 #
 #   ./install.sh                 # symlink into every host dir that exists
+#   ./install.sh --cursor        # Cursor global only (~/.cursor/skills, ~/.agents/skills)
 #   ./install.sh --copy          # copy instead (use when a host won't follow symlinks)
 #   ./install.sh --dry-run       # show what would happen
 #   ./install.sh --host ~/.foo/skills   # also target an extra path
@@ -16,38 +17,65 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MODE=link
 DRY=
+CURSOR_ONLY=
 EXTRA=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --copy)    MODE=copy ;;
     --dry-run) DRY=1 ;;
+    --cursor)  CURSOR_ONLY=1 ;;
     --host)    shift; EXTRA+=("$1") ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *)         echo "unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
 done
 
+# Cursor global skill dirs. Cursor reads both natively; ~/.agents/skills is the
+# vendor-neutral path, ~/.cursor/skills is Cursor's own home-dir convention.
+CURSOR_HOSTS=(
+  "$HOME/.cursor/skills"
+  "$HOME/.agents/skills"
+)
+
 # Host skill dirs. `.agents/skills` is the emerging cross-tool convention (Codex CLI and
 # Gemini CLI both read it); the per-tool paths are what each host reads natively today.
-HOSTS=(
+ALL_HOSTS=(
   "$HOME/.claude/skills"      # Claude Code
-  "$HOME/.agents/skills"      # shared convention: Codex CLI, Gemini CLI, others
+  "$HOME/.agents/skills"      # shared convention: Codex CLI, Gemini CLI, Cursor, others
   "$HOME/.gemini/skills"      # Gemini CLI native
   "$HOME/.codex/skills"       # Codex CLI native
-  "$HOME/.cursor/skills"      # Cursor
+  "$HOME/.cursor/skills"      # Cursor native (global, all projects on this machine)
   "$HOME/.qwen/skills"        # Qwen Code
   "${EXTRA[@]+"${EXTRA[@]}"}"
 )
 
+if [ -n "$CURSOR_ONLY" ]; then
+  HOSTS=("${CURSOR_HOSTS[@]}" "${EXTRA[@]+"${EXTRA[@]}"}")
+else
+  HOSTS=("${ALL_HOSTS[@]}")
+fi
+
 # A host counts as installed if its config dir exists, so we don't litter ~ with dirs for
 # tools that aren't here. `.agents` is created when any other host is present, since it is
-# the shared path rather than one tool's home.
+# the shared path rather than one tool's home. With --cursor, always install into Cursor's
+# global dirs — mkdir -p is harmless even before the first Cursor launch.
 host_installed() {
   local skills_dir="$1" parent
+  if [ -n "$CURSOR_ONLY" ]; then
+    case "$skills_dir" in
+      "$HOME/.cursor/skills"|"$HOME/.agents/skills") return 0 ;;
+    esac
+  fi
   parent="$(dirname "$skills_dir")"
   [ -d "$parent" ] && return 0
-  case "$skills_dir" in "$HOME/.agents/skills") return 0 ;; esac
+  case "$skills_dir" in
+    "$HOME/.agents/skills") return 0 ;;
+    "$HOME/.cursor/skills")
+      # Cursor is present when ~/.cursor exists (config, projects, or built-in skills-cursor).
+      [ -d "$HOME/.cursor" ] && return 0
+      ;;
+  esac
   return 1
 }
 
@@ -91,5 +119,12 @@ done
 
 echo
 echo "Done. Verify a host can actually read through the link:"
-echo "  head -3 \"\$HOME/.claude/skills/${SKILLS[0]##*/}/SKILL.md\""
+if [ -n "$CURSOR_ONLY" ]; then
+  echo "  head -3 \"\$HOME/.cursor/skills/${SKILLS[0]##*/}/SKILL.md\""
+else
+  echo "  head -3 \"\$HOME/.claude/skills/${SKILLS[0]##*/}/SKILL.md\""
+  echo "  head -3 \"\$HOME/.cursor/skills/${SKILLS[0]##*/}/SKILL.md\"   # Cursor global"
+fi
 echo "If a host lists no skills, re-run with --copy for that host: ./install.sh --copy --host <dir>"
+echo "Cursor also reads ~/.claude/skills/ for compatibility — if you use Claude Code too,"
+echo "the same skill may appear twice in Cursor until you pick one directory per skill."

@@ -244,3 +244,10 @@ Nothing to list? One line: `No pending future tasks identified.`
   instructions for the author, not content. Strip them all.
 - **Literal `\n` in a Mermaid label** — renders as two characters, not a line break.
 - **A section full of "N/A"** — drop the section instead.
+- **Hard-wrapping prose at a column.** Write one line per paragraph and one line per list
+  item, however long it runs, and let the renderer wrap. Newlines inserted mid-sentence to
+  keep source lines near 80/100 chars are a source-code habit that does not belong in a PR
+  body: the reader sees a ragged, oddly-broken block, and every later `gh pr edit` has to
+  re-flow the whole paragraph to change a word. The exceptions are the places where a line
+  break is content — fenced code, Mermaid, table rows, and a deliberate two-space or `<br>`
+  break — which stay exactly as written.

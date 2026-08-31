@@ -301,6 +301,11 @@ examples for each section, is in
 [`references/pr-body-guide.md`](references/pr-body-guide.md) — read it before drafting if
 you have not already.
 
+**One line per paragraph, one line per list item — never hard-wrap prose at a column.** Let
+the renderer wrap; a body wrapped at 80/100 chars reads as a ragged, oddly-broken block and
+forces a whole-paragraph re-flow on every later edit. Line breaks stay only where they are
+content: fenced code, Mermaid, table rows, an intentional `<br>`.
+
 The skeleton, with conditional sections marked. Drop any section that doesn't apply rather
 than filling it with "N/A", and **never** emit the guidance comments into the final body:
 
@@ -442,4 +447,5 @@ where the expensive CI and the review bots start.
 - **State the deferrals.** Won't-fix, accepted risk, follow-up ticket. Silence gets
   re-litigated.
 - **Don't fabricate to fill a section.** An honest empty section is information.
+- **The body is rendered, not read as source.** One line per paragraph; no hard wrapping.
 - **Never push, never merge, never edit code.** Show the command, wait for the yes.

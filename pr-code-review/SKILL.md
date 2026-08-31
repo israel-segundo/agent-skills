@@ -7,16 +7,17 @@ description: >-
   repo's own checks on the PR head in a throwaway worktree, reads the CI run and its
   artifacts, checks the issue's acceptance criteria — before scanning the diff for blast
   radius, irreversibility, broken contracts, secrets, and weak tests. Tracks findings with
-  IDs and severities, shows them as a local HTML table, and only on explicit request posts
-  a severity-ranked comment plus inline comments where a finding points at a line — deduped,
-  and disclosed in one sentence naming the model — then offers an approval
+  IDs and severities, opens a local HTML report with the initial findings before the
+  challenge loop, and only on explicit request posts a severity-ranked comment plus inline comments where a finding points at a line — deduped,
+  and disclosed with the exact model name and version on every GitHub post (comments,
+  approvals, request-changes) — then offers an approval
   decision. Use when pressure-testing
   someone else's PR, where its value is a claim like "this only touches X",
   "nothing is destroyed", "it's backwards compatible", or "a test covers it". Never posts,
   approves, pushes, or mutates anything without confirmation.
 license: Unlicense
 metadata:
-  version: "1.2.0"
+  version: "1.4.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your
@@ -99,6 +100,7 @@ point needs one, it needs a diagram or a follow-up ticket instead. Concrete beat
 - `references/report-format.md` — the HTML findings table spec, the posted-comment shape,
   the inline-comment rules and payload, the required one-sentence disclosure, and the
   length caps.
+- `references/findings-report-template.html` — starter HTML for the Step 7 initial report.
 
 ---
 
@@ -113,14 +115,22 @@ command -v git gh jq                 # gh is near-essential; without it, ask the
 git rev-parse --is-inside-work-tree
 ```
 
+Record the **exact model name and version** you are running as (e.g. "Claude Opus 5",
+"Composer (Cursor)") to `$WORK/review-model.txt` — one line, no paraphrasing. Every GitHub
+post this skill makes (review comment, approval, request-changes) must end with the
+machine-readable tag and blockquote defined in `references/report-format.md`. If you don't
+know the model, ask the user before posting.
+
 Also note, without assuming any of it: whether the host offers a **code-review** or
 **security-review** command (Step 5), whether it can **open a local file in a browser**
 (`xdg-open`, `open`, `wslview` — otherwise print the path for the user to open), and
 whether it can read files and search text (every host can; use whatever it provides — the
 commands below are the portable fallback).
 
-Note **which model and version you are running as** (e.g. "Claude Opus 5") — the disclosure
-line on any posted comment has to name it. If you don't know, ask the user before posting.
+Note **which model and version you are running as** (e.g. "Claude Opus 5") — write it to
+`$WORK/review-model.txt` in Step 0. The disclosure on any posted GitHub message has to name
+it (opening blockquote on full reviews; closing tag + blockquote on every post — see
+`references/report-format.md`). If you don't know, ask the user before posting.
 
 Say which capabilities you have and which you don't. A missing capability changes what
 you can claim later.
@@ -154,7 +164,7 @@ If no open PR exists, stop and tell the user. Then read the **full** diff
 is a bad proxy for risk: a one-line change to a shared module, a default, or a pipeline
 can outrank a thousand lines of new isolated code.
 
-**Existing-review scan (feeds the dedup in Step 10).** Keep a short list of the concrete
+**Existing-review scan (feeds the dedup in Step 11).** Keep a short list of the concrete
 points other reviewers already raised, each tagged with who raised it.
 
 - **Bot reviewers count.** A bot, an automated plan summary, or a prior review-command run
@@ -165,7 +175,7 @@ points other reviewers already raised, each tagged with who raised it.
   sit under a compliance table, and truncated output hides exactly the section that would
   have deduped your best finding. Dump them to a file and read it.
 - **This scan goes stale, and a busy PR accretes comments while you work.** It is the
-  *first* scan, not the only one — Step 10 repeats it before anything is posted. Say so
+  *first* scan, not the only one — Step 11 repeats it before anything is posted. Say so
   when you present findings, so nothing you claim as "new" is asserted more confidently
   than a scan that could be an hour old.
 
@@ -213,11 +223,10 @@ usually carry the key — `ABC-1234`, `#123`, `Closes #123`). Read the acceptanc
 they're the claim the PR answers. Use the tracker's own tooling (`gh issue view`, a Jira
 CLI or MCP). A PR satisfying 3 of 4 acceptance criteria is a finding, not a detail.
 
-Then stop and let the user drive.
-
 If the change is hard to grasp in prose — fan-out across directories, a new branch in a
 hot path, a multi-step auth or retry flow, a state move — offer a diagram (see
-[§ Visual aids](#visual-aids)) instead of a wall of text.
+[§ Visual aids](#visual-aids)) instead of a wall of text. Continue into Steps 4–6 before
+presenting findings.
 
 ## Step 4 — Verify the claims against reality
 
@@ -325,7 +334,43 @@ scope — at most a "pre-existing, not from this PR" note, never a finding again
 author. Ground every gap in a `file:line` (or a test name, CI line, plan address) plus the
 specific rule it misses.
 
-## Step 7 — The challenge loop (the core)
+Track findings in `$WORK/findings.md` as you go — one block per finding:
+
+```
+## F<n> — [High|Medium|Low] short title
+- what the gap is, the failure mode, and the cheapest fix
+- ground it in a file:line, a test name, a CI/plan line, or a doc rule
+- if it overlaps the existing-review scan (Step 1), note "already raised by <reviewer>"
+```
+
+## Step 7 — Present initial findings (HTML report)
+
+**Mandatory before the challenge loop.** After Steps 4–6, render and open the local HTML
+report. The user reads findings in the browser, not as a markdown wall in chat.
+
+1. **Finalize** `$WORK/findings.md` for this pass (zero findings is valid).
+2. **Render** `$WORK/findings-report.html` per `references/report-format.md` — start from
+   `references/findings-report-template.html` copied into `$WORK`, or write equivalent HTML.
+   Include: PR header, central claim, verification summary, existing-review note (stale-scan
+   disclaimer), findings table, and **"Raised by others, missed by me"** (even when empty).
+3. **Open** the file — always attempt; print the path if no opener works:
+
+```sh
+REPORT="$WORK/findings-report.html"
+open "$REPORT" 2>/dev/null \
+  || xdg-open "$REPORT" 2>/dev/null \
+  || wslview "$REPORT" 2>/dev/null \
+  || echo "Open it manually: $REPORT"
+```
+
+4. **Chat stays short:** PR link, central claim in one line, where the report is (if open
+   failed), what you verified at a glance, and invite challenge questions. **Do not paste the
+   findings table into chat** when the HTML opened — the report is the table.
+
+**Then stop and let the user drive** (Step 8). Refresh the same HTML file as findings
+change during the challenge loop.
+
+## Step 8 — The challenge loop (the core)
 
 The user asks questions; you answer grounded in the diff, the files, and Step 4's
 evidence. For each question, push on:
@@ -347,23 +392,10 @@ added ≠ test that would fail*, *unit test ≠ wiring*, *mocked ≠ integrated*
 enforced*, *documented ≠ defaulted*, *shared file ≠ one consumer*, *rename ≠ migration*,
 *green plan ≠ safe apply*, *works ≠ recoverable when it doesn't*.
 
-### Track findings as you go
+Refresh `$WORK/findings-report.html` when findings are added, re-severitied, or dropped —
+same IDs, updated rows. Re-open only if the user asks or the file was never opened.
 
-Keep `$WORK/findings.md` as the source of truth, one block per finding, stable ID and
-severity in the header:
-
-```
-## F<n> — [High|Medium|Low] short title
-- what the gap is, the failure mode, and the cheapest fix
-- ground it in a file:line, a test name, a CI/plan line, or a doc rule
-- if it overlaps the existing-review scan (Step 1), note "already raised by <reviewer>"
-```
-
-Once there are a few findings, render them as a **local HTML table** and open it — far
-better than a wall of terminal markdown. Spec in `references/report-format.md`. Keep it
-local: a self-contained file on disk, never a hosted render or an uploaded page.
-
-## Step 8 — Severity
+## Step 9 — Severity
 
 Calibrate to **blast radius × reversibility** — how bad if this ships as-is, and how hard
 to undo.
@@ -379,7 +411,7 @@ to undo.
 Note the cheapest concrete fix and a disposition (fix-before-merge / follow-up /
 nice-to-have). Be explicit that nothing blocks merge unless it truly does.
 
-## Step 9 — Close the loop on what you learned
+## Step 10 — Close the loop on what you learned
 
 Every run teaches something. Offer all three of the below; write none of them unasked.
 
@@ -395,7 +427,7 @@ not sentiments. Draw them from what actually happened this run:
 
 - **A finding you nearly missed, and what would have caught it.** If a scan dimension has
   no prompt for it, that's a missing line in `references/safety-scan.md`.
-- **A finding another reviewer caught and you didn't** (the HTML-only section, Step 10) —
+- **A finding another reviewer caught and you didn't** (the HTML-only section, Step 11) —
   the single richest source. Ask what question they asked that you didn't.
 - **A step that produced nothing on this repo type.** Worth narrowing or making
   conditional, not deleting.
@@ -427,7 +459,7 @@ Frame each as *rule → where it's stated → what actually enforces it (or noth
 cheapest thing that would.* Offer to file these as tickets or as a doc PR; they are usually
 somebody's else's work, so hand them over rather than acting on them.
 
-## Step 10 — Post (only when the user asks)
+## Step 11 — Post (only when the user asks)
 
 NEVER post without explicit confirmation.
 
@@ -440,6 +472,10 @@ state:
 gh pr view "$PR" --json reviews,comments > "$WORK/comments.json"   # read the bodies in full
 gh api --paginate "repos/{owner}/{repo}/pulls/$PR/comments"        # inline comments too
 ```
+
+**Re-render** `$WORK/findings-report.html` with the fifth **Vs. existing** column and muted
+duplicate rows before posting (spec in `references/report-format.md`). You do not need to
+re-open the browser unless the user asks.
 
 Then dedupe (bots included) and classify every finding as one of:
 
@@ -464,11 +500,12 @@ caught that you didn't — it is the most useful thing in the report for the use
 must never appear in the posted comment, where it reads as noise to everyone but you.
 Spec in `references/report-format.md`.
 
-Build the comment per `references/report-format.md` — title, one-sentence disclosure
-naming the model, stance paragraph, severity-ranked findings **as a list, never a markdown
-table** (GitHub breaks narrow table columns mid-word — the reference explains it),
-"verified while reviewing" paragraph including limits, suggested split. Write the body to a
-file, then:
+Build the comment per `references/report-format.md` — title, one-sentence opening
+disclosure naming the model from `$WORK/review-model.txt`, stance paragraph,
+severity-ranked findings **as a list, never a markdown table** (GitHub breaks narrow table
+columns mid-word — the reference explains it), "verified while reviewing" paragraph
+including limits, suggested split, and the **closing model disclosure** (HTML comment tag +
+blockquote — required for measurement). Write the body to a file, then:
 
 ```sh
 gh pr comment "$PR" --body-file "$WORK/review.md"      # never inline a heredoc
@@ -489,21 +526,24 @@ disclosure is one sentence, a findings cell is a claim plus at most three senten
 inline comment is 1–3 sentences. It should read like a colleague who did the homework, not
 a generated report.
 
-## Step 11 — Offer to approve (or not)
+## Step 12 — Offer to approve (or not)
 
 After posting, **offer a decision** — don't leave it implicit.
 
 - **Approve** — nothing blocks merge; findings are fast-follows or author-owns-it.
-  `gh pr review "$PR" --approve --body-file <path>`
+  `gh pr review "$PR" --approve --body-file <path>`. The body **must** end with the closing
+  model disclosure (tag + blockquote) even when skipping a full findings post.
 - **Approve with a nudge** — same, but ask the author to fold in the one or two findings
   that matter, and (when operationally risky) to watch it in a lower environment first.
-  Common outcome.
+  Common outcome. Same disclosure requirement.
 - **Don't approve / request changes** — a finding undercuts the PR's purpose, loses data,
-  or breaks something depended on. `gh pr review "$PR" --request-changes --body-file <path>`
+  or breaks something depended on. `gh pr review "$PR" --request-changes --body-file <path>`.
+  Same disclosure requirement.
 
 State which you'd pick and why, in plain language, then wait. **Never approve or request
 changes without explicit confirmation.** Keep it short and human, write it to a file
-first, and mention the author when there's something to act on.
+first (include the closing model disclosure from `$WORK/review-model.txt`), and mention the
+author when there's something to act on.
 
 If the decision carries inline comments, send it as one review instead: the same
 `gh api "repos/{owner}/{repo}/pulls/$PR/reviews" --input` payload with
@@ -565,8 +605,10 @@ characters: `A["service (prod)"]`. Make ONE gap obvious; don't redraw the whole 
 - **Anchor a finding where the reader has to look.** Line-level findings get an inline
   comment; absent-thing and cross-file findings stay in the summary list. A few anchors,
   never one per finding.
-- **Name the model.** The disclosure is one sentence and says which model helped, what it
-  checked, and that a human challenged it.
-- **Close the loop, but never on autopilot.** Findings → HTML table → posted comment →
-  approve-or-not. Offer each step; do none of the posting or approving without explicit
-  confirmation.
+- **Name the model on every GitHub post.** Record it in Step 0 to `$WORK/review-model.txt`.
+  Full reviews get an opening disclosure blockquote plus the closing
+  `<!-- pr-code-review-model: … -->` tag; approvals and request-changes get at least the
+  closing tag + blockquote. Required so review quality can be compared across models.
+- **Close the loop, but never on autopilot.** Initial findings → open HTML report → challenge
+  loop (refresh HTML) → posted comment → approve-or-not. Offer each step; do none of the
+  posting or approving without explicit confirmation.
