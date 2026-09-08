@@ -13,7 +13,7 @@ description: >-
   description, or mark an existing PR ready for review.
 license: Unlicense
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git, gh, jq) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your host
@@ -256,11 +256,13 @@ ready flip.
 **For a ready (non-draft) PR** — because the user explicitly asked for one — a review pass
 must already cover this exact HEAD:
 
-1. A pass already covered it (a `/code-review`, the repo's own review command, a
-   plan-execution critique round). Reuse it. **Never re-run a pass that already covers this
-   HEAD.**
-2. None did → run the repo's own review checklist against `origin/$BASE...HEAD`. If the
-   repo has none, do a read-only correctness pass over the diff yourself.
+1. A pass already covered it — e.g. **pr-code-review** (interactive),
+   **pr-code-review-batch** (`findings.md` + HTML with no High/S0 blockers for this HEAD),
+   **execute-plan** Phase 8 critique, or the repo's own review command. Reuse it. **Never
+   re-run a pass that already covers this HEAD.**
+2. None did → run **pr-code-review-batch** or **pr-code-review** if available; otherwise
+   the repo's review checklist against `origin/$BASE...HEAD`. If the repo has none, do a
+   read-only correctness pass over the diff yourself.
 
 Treat as **blockers** anything the pass marked must-fix, merge-blocking, or high severity —
 the wording differs between passes, the merge posture doesn't.
