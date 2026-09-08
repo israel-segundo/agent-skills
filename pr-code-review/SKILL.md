@@ -574,6 +574,16 @@ characters: `A["service (prod)"]`. Make ONE gap obvious; don't redraw the whole 
 
 ---
 
+## Related skills
+
+| Skill | Role |
+|-------|------|
+| **pr-code-review-batch** | Same methodology unattended — `findings.md` + HTML; no HITL or posts |
+| **create-plan** / **execute-plan** | Plan vs diff verification in Step 4 |
+| **create-pr** | Consumes review passes before ready flip |
+| **pr-address-feedback** | Implements fixes after human review |
+| **request-pr-review** | Slack announcement after PR is open |
+
 ## Principles
 
 - **Learn the repo before judging it.** Its documented rules are the standard; a violation
