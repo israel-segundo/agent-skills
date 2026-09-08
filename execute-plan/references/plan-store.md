@@ -1,5 +1,7 @@
 # Plan store — directory resolution
 
+> Keep in sync with `create-plan/references/plan-store.md` (canonical).
+
 Both **create-plan** and **execute-plan** read plans from a single configurable
 **plan store directory**. Plans are not required to live inside the repository.
 

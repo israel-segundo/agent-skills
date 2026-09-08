@@ -1,5 +1,7 @@
 # PR map — at-a-glance rollout table
 
+> Keep in sync with `create-plan/references/pr-map.md` (canonical).
+
 The **PR map** is the human-facing summary at the top of every plan. A reader should
 understand rollout status, which repos are touched, and what can run in parallel — without
 scrolling into task lists.

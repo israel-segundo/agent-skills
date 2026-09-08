@@ -1,5 +1,7 @@
 # Multi-repository plans
 
+> Keep in sync with `create-plan/references/multi-repo.md` (canonical).
+
 Tickets often span more than one repository (shared contracts, API + client, infra + app).
 Plans must name every involved repo and explore each on an up-to-date default branch.
 
