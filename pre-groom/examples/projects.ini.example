@@ -1,0 +1,17 @@
+# Example: $HOME/.pre-groom/projects.ini
+#
+# One section per Jira project key. Paths must be absolute local checkouts.
+# Copy to $HOME/.pre-groom/projects.ini and edit.
+# Or set PRE_GROOM_CONFIG_DIR to another absolute directory.
+# The skill may also create/update this file after asking you once.
+# Never commit this into a repository.
+
+[PROJ]
+primary=/absolute/path/to/product-api
+extra=/absolute/path/to/product-web,/absolute/path/to/product-contracts
+notes=Use extras when the ticket mentions UI or shared contracts
+updated=2026-09-08
+
+[OPS]
+primary=/absolute/path/to/ops-tooling
+updated=2026-09-08

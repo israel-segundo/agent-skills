@@ -1,0 +1,14 @@
+# Per-repository Slack channel memory
+# Path: ~/.config/pr-review-request/repos.ini
+# Created automatically on first /request-pr-review in each repo.
+
+[acme/example-api]
+slack_channel_id=C0123456789
+integration_threads_context=true
+updated=2026-09-07
+
+[acme/example-web]
+slack_channel_id=C0987654321
+github_slack_map=/home/you/.config/pr-review-request/github-slack.json
+integration_threads_context=true
+updated=2026-09-07

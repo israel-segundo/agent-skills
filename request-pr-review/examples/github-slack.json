@@ -1,0 +1,4 @@
+{
+  "alice": { "slack_id": "U01AAAAAAA", "display_name": "Alice Smith" },
+  "bob": { "slack_id": "U02BBBBBBB", "display_name": "Bob Jones" }
+}

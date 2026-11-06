@@ -1,0 +1,12 @@
+# Example: $HOME/.pre-groom/config.ini
+#
+# Copy to $HOME/.pre-groom/config.ini and edit.
+# Or set PRE_GROOM_CONFIG_DIR to another absolute directory.
+# The skill may also create/update this file after asking you once.
+# Never commit this into a repository.
+
+jira_site=https://example.atlassian.net
+jira_cloud_id=
+# Set after ask-once (example value only — do not assume this id for every tenant)
+story_points_field=
+updated=2026-09-08

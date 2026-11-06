@@ -1,0 +1,10 @@
+# Example: $HOME/.deslopify/config.ini
+#
+# Copy to $HOME/.deslopify/config.ini and edit.
+# Or set DESLOPIFY_CONFIG_DIR to another absolute directory.
+# The skill may also create/update this file after asking you once.
+# Never commit this into a repository.
+
+jira_site=https://example.atlassian.net
+jira_cloud_id=
+updated=2026-09-08
