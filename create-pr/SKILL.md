@@ -2,18 +2,19 @@
 name: create-pr
 description: >-
   Open a pull request for the current branch with a description a reviewer can actually
-  use, and own the draft-to-ready flip. Reads the whole diff rather than the commit
+  use, ready for review by default. Reads the whole diff rather than the commit
   messages, groups it by logical change instead of by file, and writes a structured body —
   context, deployment steps, services, tests, deferred work — into a file passed to
   `gh pr create --body-file`, so backticks and Mermaid survive intact. Learns the repo's own
   conventions first: its real default branch, its PR template, its title validation, its
-  changelog and draft rules. Opens as a draft by default, and gates the flip to ready on a
+  changelog rules. Opens ready for review unless the caller explicitly asks for a draft
+  (a repo's own draft-by-default convention does not count as asking), and gates ready on a
   review pass having covered the head it is about to publish. Use when the user wants to
   create a pull request, open a PR, prepare a branch for review, refresh a stale PR
   description, or mark an existing PR ready for review.
 license: Unlicense
 metadata:
-  version: "1.0.1"
+  version: "2.0.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git, gh, jq) rather than
     host-specific tools, and degrades gracefully when a capability is absent. If your host
@@ -24,7 +25,7 @@ when_to_use: >-
   become visible. Not for pushing code, not for fixing review feedback, and not for
   merging. If a repo ships its own create-pr skill, that one wins: it knows the repo's
   template, its CI gates, and its release tooling.
-argument-hint: "[target-branch | pr-number]"
+argument-hint: "[target-branch | pr-number] [--draft]"
 allowed-tools:
   - Bash
   - Read
@@ -33,7 +34,7 @@ allowed-tools:
   - Glob
 ---
 
-# Create PR (structured description, draft by default)
+# Create PR (structured description, ready for review by default)
 
 Read everything the branch changed, work out what it *does*, and write that down in a shape
 a reviewer can act on. The output is a pull request whose description saves the reviewer
@@ -45,11 +46,13 @@ records what the branch does as a whole. Those differ, and the second is what re
 Group by logical change — the three-to-six things this branch does — never one bullet per
 file.
 
-**Second stance: a draft is invisible to review, and a ready PR is a claim.** Opening a
-draft costs nothing and gates nothing. Flipping to ready says "this is worth someone's
-afternoon", and on most repos it also triggers the expensive CI and the review bots. So the
-ready flip — not the create — is where this skill checks that a review pass has actually
-covered the head being published.
+**Second stance: ready is the default, and a ready PR is a claim.** A PR is opened ready
+for review unless the caller explicitly says "draft" in this invocation. A repo's
+convention, template note or docs saying "open as draft" is **not** that ask; ignore it
+here, and say in the report that you did. Because ready says "this is worth someone's
+afternoon" and usually triggers the expensive CI and the review bots, this skill checks
+that a review pass has actually covered the head being published before it opens a ready
+PR (Step 7).
 
 **Plain language and short.** One line per table row. The context section reads like an
 engineering summary, not a changelog of files. If a sentence has three qualifiers stacked
@@ -94,6 +97,9 @@ authenticated; run `gh auth login`. Do not attempt the GitHub REST API by hand a
 fallback.
 
 Then decide the mode:
+
+- `--draft` anywhere in the arguments, or the caller saying "draft" in plain words for this
+  PR → open a draft. Otherwise the PR opens ready for review.
 
 - Argument is **all digits** (`1658`) → **Marking an existing PR ready** (jump to that
   section at the end). The argument is a PR number, not a branch.
@@ -164,8 +170,8 @@ What to take from each:
 - **A changelog convention** (a `Changelog:` trailer, a changeset file, a `docs/changelog-*`
   style guide) → follow it; see Step 9. No convention found → omit the line entirely
   rather than inventing a format.
-- **A draft convention** — some repos skip expensive CI on drafts, some require ready. If
-  the repo says nothing, draft is the default here.
+- **A draft convention** — note it for the report, but don't follow it. The PR opens ready
+  unless the caller explicitly asked for a draft (see the second stance).
 - **A review command or checklist** (`.claude/commands/pr-review.md`, a review skill, a
   checklist in `CONTRIBUTING.md`) → note it; Step 7 needs it.
 
@@ -247,16 +253,15 @@ never a question to the user.
 
 Anything a repo-local skill or a PR template requires beyond these, add it too.
 
-## Step 7 — The review gate (ready PRs only)
+## Step 7 — The review gate (ready PRs, the default)
 
-Drafts get no gate: nobody is being asked to look yet, and most repos skip their heavy CI
-and review bots on drafts. Say in your summary that the review pass belongs before the
-ready flip.
+A draft (only when the caller explicitly asked for one) gets no gate: nobody is being asked
+to look yet. Say in your summary that the review pass belongs before the ready flip.
 
-**For a ready (non-draft) PR** — because the user explicitly asked for one — a review pass
-must already cover this exact HEAD:
+**For a ready PR** — the default — a review pass must already cover this exact HEAD:
 
-1. A pass already covered it — e.g. **pr-code-review** (interactive),
+1. A pass already covered it — e.g. **pr-review-fix** (a clean final round),
+   **pr-code-review** (interactive),
    **pr-code-review-batch** (`findings.md` + HTML with no High/S0 blockers for this HEAD),
    **execute-plan** Phase 8 critique, or the repo's own review command. Reuse it. **Never
    re-run a pass that already covers this HEAD.**
@@ -268,9 +273,10 @@ Treat as **blockers** anything the pass marked must-fix, merge-blocking, or high
 For **pr-code-review-batch**, treat **High** severity or a **Fix before merge** disposition
 as merge-blocking (batch does not use S0/S1 labels).
 
-**Blockers found → report them, create the PR as a draft instead** (keeping the title, body
-and Future Tasks you composed), and name the open blockers in your summary. Do not fix them;
-this skill does not edit code. Retry the ready flip once they're clear.
+**Blockers found → report them and stop without creating the PR.** Keep the title and body
+you composed in `$WORK` so a retry reuses them. Do not fix them (this skill does not edit
+code), and do not switch to a draft on your own: a draft only happens when the caller
+explicitly asks for one. Retry once the blockers are clear.
 
 Either way, name known deferrals in **Future Tasks** as *won't fix here*, *accepted risk*,
 or *follow-up ticket* — an unstated deferral gets re-raised by every review round.
@@ -384,14 +390,15 @@ git diff "origin/$BASE...HEAD" | grep -nE '^\+.*(TODO|FIXME|HACK|XXX)'
 ## Step 10 — Create the PR
 
 ```sh
-gh pr create --draft --base "$BASE" \
+gh pr create --base "$BASE" \
   --title "<title>" --body-file "$WORK/pr_body.md"
 ```
 
-- **`--draft` is the default.** Drafts skip heavy CI on most repos and are invisible to
-  review bots — iterate there, flip once.
-- Omit `--draft` only when the user explicitly asked for a ready PR *and* Step 7 came back
-  clean. Go straight to ready; don't create a draft and immediately flip it.
+- **Ready is the default.** Only reached when Step 7 came back clean.
+- Add `--draft` only when the caller explicitly asked for a draft in this invocation. A
+  repo convention, a template note, or a repo-local doc saying "draft by default" is not
+  that ask.
+- Never create a draft and then flip it, and never flip a ready PR back to draft.
 - `--body-file` always. Never `--body "..."`.
 
 ## Step 11 — Report
@@ -401,8 +408,9 @@ Give the URL, the title, the base, draft-or-ready, and:
 - which conventions you conformed to (template, title check, changelog rule),
 - which conditional sections you included and why,
 - anything you left as an author placeholder (screenshots, flag posture),
-- for a draft: that the review pass belongs before the ready flip,
-- for a blocked ready flip: the blockers, and that the PR was opened as a draft instead.
+- if the repo has a draft-by-default convention: that you opened it ready anyway,
+- for an explicitly requested draft: that the review pass belongs before the ready flip,
+- for a blocked create: the blockers, and that no PR was opened.
 
 ---
 
@@ -445,8 +453,10 @@ where the expensive CI and the review bots start.
 - **Group by change, not by file.** Eight bullets maximum. A fifty-file PR still does three
   to six things.
 - **The repo's convention beats this skill's default.** Template, title check, changelog
-  rule, draft policy — find them first, conform, and say which you conformed to.
-- **Draft costs nothing; ready is a claim.** The gate lives at the flip.
+  rule — find them first, conform, and say which you conformed to. The one exception is a
+  draft-by-default policy: the PR still opens ready unless the caller asked for a draft.
+- **Ready by default; draft only on explicit ask.** A ready PR is a claim, so the review
+  gate sits in front of it. A repo's draft convention doesn't override the default.
 - **State the deferrals.** Won't-fix, accepted risk, follow-up ticket. Silence gets
   re-litigated.
 - **Don't fabricate to fill a section.** An honest empty section is information.

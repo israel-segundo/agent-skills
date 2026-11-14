@@ -31,8 +31,19 @@ See [global-registry.md](global-registry.md). Section keys use `owner/repo` from
 slack_channel_id=C0123456789
 github_slack_map=/home/you/.config/pr-review-request/github-slack.json
 integration_threads_context=true
+default_reviewers=alice-gh, bob-gh
 updated=2026-09-07
 ```
+
+| Key | Meaning |
+|---|---|
+| `slack_channel_id` | Channel the request is posted in (required) |
+| `github_slack_map` | Absolute path to the GitHub login → Slack ID map (optional) |
+| `integration_threads_context` | `true` when a bot already threads PR context, so the post stays a one-liner |
+| `default_reviewers` | Comma-separated **GitHub logins** proposed in Step 3 when the PR has no reviewers (optional). Unattended callers such as pr-launch set these without asking. Never written by this skill; you add it by hand |
+| `updated` | Last time the section was written |
+
+Keys may be written `key=value` or `key = value`.
 
 Example file: [examples/repos.ini.example](../examples/repos.ini.example).
 

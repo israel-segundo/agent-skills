@@ -4,22 +4,22 @@ description: >-
   Shepherd your own open PR through another review round, unattended: rebase onto the
   default branch, address the new review feedback, push, watch the CI checks and fix what
   breaks until they are green, reply to and resolve the threads, then ask the reviewers on
-  Slack to look again. Chains git-rebase, pr-address-feedback and request-pr-review, and
-  replaces their confirmation prompts with one standing authorization: invoking this skill
-  is the go-ahead for this run's lease-protected push, thread replies, PR description edit,
-  reviewer re-request and Slack post. Stops to ask only on a blocker it cannot fix. Files no
+  Slack to look again. Chains git-rebase, pr-address-feedback, pr-checks-green and
+  request-pr-review, and replaces their confirmation prompts with one standing
+  authorization: invoking this skill is the go-ahead for this run's lease-protected push,
+  thread replies, PR description edit, reviewer re-request and Slack post. Stops to ask only on a blocker it cannot fix. Files no
   tickets. Safe to trigger from GitHub events: a per-worktree lock serializes runs, a run
   with nothing new exits without touching anything, and the last line is a parseable RESULT.
   Use when a PR you authored got feedback (not an approval) and you want it handled end to
   end.
 license: Unlicense
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
-    host-specific tools. Depends on the sibling skills git-rebase, pr-address-feedback and
-    request-pr-review; if your host has no skill support, read each SKILL.md where this
-    file says to and follow it with the overrides stated here.
+    host-specific tools. Depends on the sibling skills git-rebase, pr-address-feedback,
+    pr-checks-green and request-pr-review; if your host has no skill support, read each
+    SKILL.md where this file says to and follow it with the overrides stated here.
 when_to_use: >-
   Use in a worktree whose branch has an open PR you authored, after reviewers or review
   bots left feedback, or CI went red, and you want the whole cycle (sync, fix, push, green
@@ -92,11 +92,11 @@ skill ever makes. **Headless:** print the blocker and exit. Either way, release 
 
 ### Sub-skills
 
-Invoke `git-rebase`, `pr-address-feedback` and `request-pr-review` by name through the host's
-skill mechanism, so a repo-local version of any of them wins. If the host has none, read
-`$SKILL_DIR/../<name>/SKILL.md` and follow it. `$SKILL_DIR` is the directory this file was
-loaded from; hosts usually state it, and the usual fallbacks are `~/.claude/skills/pr-shepherd`
-and `~/.agents/skills/pr-shepherd`. **The overrides in each step below replace the
+Invoke `git-rebase`, `pr-address-feedback`, `pr-checks-green` and `request-pr-review` by
+name through the host's skill mechanism, so a repo-local version of any of them wins. If the
+host has none, read `$SKILL_DIR/../<name>/SKILL.md` and follow it. `$SKILL_DIR` is the
+directory this file was loaded from; hosts usually state it, and the usual fallbacks are
+`~/.claude/skills/pr-shepherd` and `~/.agents/skills/pr-shepherd`. **The overrides in each step below replace the
 sub-skill's confirmation steps, and only those.**
 
 ### Progress checklist
@@ -304,40 +304,18 @@ comment's `id` + `at` to `$STATE/handled.json`.
 
 ## Step 7: Watch the checks, fix until green
 
-▸ **Stage 8** starts here and runs through Step 8. Refresh its label after each
-`wait-checks.sh` call with the pending count, or with the check being fixed.
+▸ **Stage 8** starts here and runs through Step 8. Refresh its label with the pending count,
+or with the check being fixed.
 
-```sh
-"$SKILL_DIR/scripts/wait-checks.sh" "$HEAD_OID" --pr "$PR"    # bounded: ≤ ~9 min per call
-```
+Run **pr-checks-green** with this run's state: `PR`, `HEAD_OID`, `REMOTE`, `BRANCH`, `BASE`,
+`FIX_ATTEMPTS`, and `PR_CI_TIMEOUT` (default 60; `SHEPHERD_CI_TIMEOUT` still works). This
+run's authorization covers its commits and plain pushes. Afterwards take back its final
+`HEAD_OID` and `FIX_ATTEMPTS`.
 
-Call it again while it exits `8` (still pending), up to 60 minutes in total
-(`SHEPHERD_CI_TIMEOUT`, in minutes). Past that → **BLOCKED**.
-
-| Exit | Meaning | Do |
-|---|---|---|
-| 0 | all passed or skipped | go to Step 8 |
-| 3 | no checks registered | note "no CI on this repo" and treat local verify as the evidence; go to Step 8 |
-| 4 | the PR head is someone else's commit | **BLOCKED** |
-| 1 | failures in `.failed[]` | handle each failure (below), then wait again |
-
-For each failed check:
-
-1. **Read the failure.** For GitHub Actions, the URL contains `/actions/runs/<run>/job/<job>`,
-   so use `gh run view <run> --job <job> --log-failed`. For any other CI, follow the link. If
-   you can't read the cause, that's **BLOCKED**.
-2. **Classify it:**
-   - **Caused by this branch** (a test, lint, type or build error in code the PR touches or
-     depends on): fix it, run the matching local check, commit (`fix: <check> failure`),
-     do a plain push, `FIX_ATTEMPTS+=1`, and wait on the new head. At `FIX_ATTEMPTS > 3` →
-     **BLOCKED**.
-   - **Infrastructure or flake** (runner lost, network/registry/rate-limit error, a timeout
-     with no failing assertion, a cancellation): `gh run rerun <run> --failed`, **once** per
-     check per head. If it fails again, treat it as caused by the branch.
-   - **Red on the base branch too:** prove it before saying so. Run
-     `gh run list --branch "$BASE" --workflow "<workflow>" -L 3 --json conclusion,headSha,url`
-     and read that run's log for the same error. Proven → **BLOCKED** with the evidence.
-     Never call a failure pre-existing without that proof.
+| Its result | Do |
+|---|---|
+| `DONE` | go to Step 8 (`no CI on this repo` → treat local verify as the evidence) |
+| `BLOCKED` | **BLOCKED**, with its reason |
 
 ## Step 8: Re-sweep for feedback that arrived during the run
 

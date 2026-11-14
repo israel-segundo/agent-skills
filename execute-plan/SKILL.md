@@ -9,7 +9,7 @@ description: >-
   (create-plan), read-only reviews (pr-code-review), or opening PRs (create-pr).
 license: Unlicense
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git, gh, rg) rather than
     host-specific tools, and degrades gracefully when a capability is absent. Plan directory
@@ -200,9 +200,11 @@ Skip only with explicit human consent.
 
 Present options:
 
-1. **Open a PR** — use **create-pr** after Phases 7–8 and plan-sync.
-2. **Continue to next PR** — loop to Phase 1.
-3. **Keep branch as-is** — human handles PR/merge.
+1. **Launch unattended** — use **pr-launch**: review and fix, sanity tests, push, ready PR,
+   green CI, review request and ticket update in one run, stopping only on a blocker.
+2. **Open a PR** — use **create-pr** after Phases 7–8 and plan-sync.
+3. **Continue to next PR** — loop to Phase 1.
+4. **Keep branch as-is** — human handles PR/merge.
 
 ## Branch and safety
 
@@ -223,6 +225,7 @@ completed-PR summary. Prefer scoped reads within a PR.
 | **pr-code-review** | Interactive adversarial review before PR (Phase 8) |
 | **pr-code-review-batch** | Unattended review; `findings.md` + HTML when no HITL |
 | **create-pr** | Opens structured GitHub PR from current branch |
+| **pr-launch** | Unattended handoff: review, sanity tests, push, ready PR, green CI, review request, ticket update |
 
 ## Skill layout
 

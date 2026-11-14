@@ -10,7 +10,7 @@ description: >-
   review. Not for opening PRs (create-pr) or performing code review (pr-code-review).
 license: Unlicense
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git, gh) rather than
     host-specific tools. Slack posting probes MCP/CLI and degrades to a paste-ready message
@@ -140,6 +140,23 @@ Search the configured channel for `pull/<PR_NUMBER>` (see slack-transport.md).
 ---
 
 ## Step 3 — Pick and set reviewers
+
+**Registry default first.** If this repo's section in the registry has `default_reviewers`
+([config.md](references/config.md)), propose exactly those logins (minus the PR author)
+instead of the full list below. The human can still edit the pick; a caller that has
+pre-authorized this step (such as pr-launch) uses them as-is.
+
+```sh
+REGISTRY="${XDG_CONFIG_HOME:-$HOME/.config}/pr-review-request/repos.ini"
+awk -v section="[$REPO]" '
+  $0 == section { found=1; next }
+  /^\[/ { found=0 }
+  found && /^[[:space:]]*default_reviewers[[:space:]]*=/ {
+    sub(/^[^=]*=[[:space:]]*/, ""); gsub(/[[:space:]]*,[[:space:]]*/, " "); print; exit }
+' "$REGISTRY" 2>/dev/null
+```
+
+No key → list assignable users:
 
 ```sh
 OWNER=$(gh repo view --json owner -q .owner.login)

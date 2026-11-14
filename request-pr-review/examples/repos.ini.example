@@ -5,6 +5,7 @@
 [acme/example-api]
 slack_channel_id=C0123456789
 integration_threads_context=true
+default_reviewers=alice-gh, bob-gh
 updated=2026-09-07
 
 [acme/example-web]
