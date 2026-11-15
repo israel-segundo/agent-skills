@@ -119,10 +119,12 @@ worktree_for() {  # worktree_for <main checkout> <branch> → path or empty
 }
 busy() {  # busy <worktree> → 0 when another skill holds a fresh lock there
   local gd; gd=$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null) || return 1
-  for s in pr-launch pr-shepherd pr-land; do
+  local s started stale
+  for s in execute-plan pr-launch pr-shepherd pr-land; do
     if [ -d "$gd/$s/lock" ]; then
-      local started; started=$(cat "$gd/$s/lock/started" 2>/dev/null || stat -c %Y "$gd/$s/lock")
-      [ $(( $(date +%s) - started )) -lt 10800 ] && { echo "$s"; return 0; }
+      started=$(cat "$gd/$s/lock/started" 2>/dev/null || stat -c %Y "$gd/$s/lock")
+      stale=10800; [ "$s" = execute-plan ] && stale=21600
+      [ $(( $(date +%s) - started )) -lt "$stale" ] && { echo "$s"; return 0; }
     fi
   done
   return 1

@@ -67,7 +67,29 @@ If the repo needs per-worktree setup (dependency install, env files copied from 
 checkout, generated code), follow the repo's documented worktree or setup steps once, inside
 `$WT`. Never copy secrets that the docs don't say to copy.
 
-## 5. Work there
+## 5. Take the worktree's lock
+
+One implementation run per worktree. Take the lock as soon as the worktree is known, before
+any edit, in both modes:
+
+```sh
+LOCK="$(git -C "$WT" rev-parse --absolute-git-dir)/execute-plan/lock"
+mkdir -p "$(dirname "$LOCK")"
+if mkdir "$LOCK" 2>/dev/null; then
+  date +%s > "$LOCK/started"
+elif [ $(( $(date +%s) - $(cat "$LOCK/started" 2>/dev/null || echo 0) )) -gt 21600 ]; then
+  rm -rf "$LOCK" && mkdir "$LOCK" && date +%s > "$LOCK/started"   # stale (>6h): take over
+else
+  echo "RESULT: NOOP (another execute-plan run is active in $WT)"; exit 0
+fi
+```
+
+Interactive mode says the same thing in words and stops. **Every exit path removes `$LOCK`**,
+including BLOCKED. It lives in the worktree's git dir, so nothing shows up in `git status`,
+and pr-runner treats a worktree holding it as busy. Multi-repo slices lock each target
+worktree they edit.
+
+## 6. Work there
 
 From here on every command takes `-C "$WT"` or an absolute path under `$WT`. Don't rely on
 changing the shell's directory; some hosts reset it and some users' shells hook it.

@@ -52,7 +52,7 @@ Then, before dispatching, it skips the PR when:
 - the head branch has **no local worktree**. Having a worktree is the opt-in: PRs you opened
   from elsewhere are left alone
 - the worktree has uncommitted changes (someone's working there)
-- pr-launch, pr-shepherd or pr-land holds a fresh lock in that worktree
+- execute-plan, pr-launch, pr-shepherd or pr-land holds a fresh lock in that worktree
 - the last run on that PR was BLOCKED and the PR hasn't changed since (no new commit or
   activity), so a stuck PR isn't retried every sweep
 

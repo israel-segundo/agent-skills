@@ -10,7 +10,7 @@ description: >-
   (create-plan), read-only reviews (pr-code-review), or opening PRs (create-pr).
 license: Unlicense
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git, gh, rg) rather than
     host-specific tools, and degrades gracefully when a capability is absent. Plan directory
@@ -150,6 +150,10 @@ slice → BLOCKED).
 Then move the ticket: **jira-transition** `--to in_progress --if-category new` (interactive:
 offer it; unattended: authorized). A NOOP or a missing Jira transport is fine.
 
+Then take the worktree's lock ([references/worktree.md § 5](references/worktree.md)). Another
+run already holds it → stop (`RESULT: NOOP (another execute-plan run is active …)`), so two
+agents never edit the same worktree. Release it on every exit.
+
 Never implement on the default branch.
 
 ### Phase 3 — Gap analysis (no code)
@@ -242,7 +246,8 @@ pr-launch runs **pr-review-fix** to a clean round on the exact head it publishes
 4. Do not open a PR with the executed slice still marked PENDING in the map or heading.
 
 **Unattended:** commit (repo convention, message via `-F` file), then, unless `--no-launch`,
-run **pr-launch** in the slice's worktree (passing `--reviewers`). Its `RESULT:` line is the
+run **pr-launch** in the slice's worktree (passing `--reviewers`), still holding the lock, and
+release the lock when pr-launch returns. Its `RESULT:` line is the
 last line of output. With `--no-launch`, report the worktree, branch and commit and end with
 `RESULT: DONE`.
 
