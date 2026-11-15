@@ -60,7 +60,7 @@ An orchestrator passes these. Standalone, resolve them in Step 0.
 | `PR_CI_TIMEOUT` | total minutes to wait (falls back to `SHEPHERD_CI_TIMEOUT`) | `60` |
 
 `$SKILL_DIR` is the directory this file was loaded from. Hosts usually state it; the usual
-fallbacks are `~/.claude/skills/pr-checks-green` and `~/.agents/skills/pr-checks-green`.
+fallbacks are `~/.agents/skills/pr-checks-green` or the host's own skills directory.
 
 ## Step 0: Preflight (standalone only)
 

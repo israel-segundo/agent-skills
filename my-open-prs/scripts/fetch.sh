@@ -325,7 +325,7 @@ jq -s --arg me "$ME" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
       $nodes
       | map(. as $n | .order = ($order | index($n.key)))
       | sort_by(.order)
-      | map(del(.key, .order, .defaultBranch, .head, .updatedAt))
+      | map(del(.key, .order, .defaultBranch))
       | map(
           # human-readable dependsOn summary
           .dependsOnSummary =

@@ -1,0 +1,8 @@
+[Unit]
+Description=pr-runner sweep (dispatch pr-shepherd / pr-land on your open PRs)
+
+[Service]
+Type=oneshot
+# Login shell so PATH has gh, jq, the agent CLI and the repos' toolchains.
+ExecStart=/bin/bash -lc '"$HOME/.agents/skills/pr-runner/scripts/sweep.sh" --dispatch'
+Nice=10

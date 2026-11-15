@@ -14,7 +14,7 @@ description: >-
   end.
 license: Unlicense
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
     host-specific tools. Depends on the sibling skills git-rebase, pr-address-feedback,
@@ -96,7 +96,7 @@ Invoke `git-rebase`, `pr-address-feedback`, `pr-checks-green` and `request-pr-re
 name through the host's skill mechanism, so a repo-local version of any of them wins. If the
 host has none, read `$SKILL_DIR/../<name>/SKILL.md` and follow it. `$SKILL_DIR` is the
 directory this file was loaded from; hosts usually state it, and the usual fallbacks are
-`~/.claude/skills/pr-shepherd` and `~/.agents/skills/pr-shepherd`. **The overrides in each step below replace the
+`~/.agents/skills/pr-shepherd` or the host's own skills directory. **The overrides in each step below replace the
 sub-skill's confirmation steps, and only those.**
 
 ### Progress checklist
@@ -268,9 +268,10 @@ them: **Stage 4** covers its Steps 6–7, **Stage 5** its Step 8, and **Stage 6*
   - Find the plan for this branch. Take the ticket key from the branch name
     (`[A-Z][A-Z0-9]+-[0-9]+`) and search case-insensitively for `*plan*.md` containing the key
     in this order: a plan doc inside the repo (per pr-address-feedback's
-    `references/discovery.md`), then `$PLANS_DIR` or `.plan-store` (recursively, including
-    `completed`-style subfolders), then any plan location the user's own agent instructions
-    name. If there are several candidates, prefer one with the key in its path that isn't
+    `references/discovery.md`), then `$PLANS_DIR` (with `{repo}` expanded to the main
+    checkout's directory name) or `.plan-store`, then `$PLANS_ROOT` (all recursively,
+    including `completed`-style subfolders), then any plan location the user's own agent
+    instructions name. If there are several candidates, prefer one with the key in its path that isn't
     under a completed folder. If it's still ambiguous, or there's no plan, skip this and say
     so. That isn't a blocker.
   - Under the plan's `## Open items` heading (add it at the end if it's missing), append
@@ -394,8 +395,13 @@ RESULT: BLOCKED (<what you need from the user>)
 
 ## Running it from GitHub events
 
-- Run it from the PR's own worktree, for example `claude -p "/pr-shepherd"`, and parse the
-  final `RESULT:` line. The host's permission settings must allow the git, gh and verify
+The simplest runner is **pr-runner**: a scheduled sweep over your open PRs that runs this
+skill in each PR's worktree when there's feedback, a red check or a conflict. Event-driven
+setups work too:
+
+- Run it from the PR's own worktree with your agent's headless mode (for example
+  `codex exec "Use the pr-shepherd skill."`, `gemini -p …`, `claude -p "/pr-shepherd"`), and
+  parse the final `RESULT:` line. The host's permission settings must allow the git, gh and verify
   commands to run without prompts.
 - Useful triggers: a submitted review that isn't an approval, a review comment, a PR issue
   comment, and a failed check suite. Ignore events you authored yourself. Triage would NOOP

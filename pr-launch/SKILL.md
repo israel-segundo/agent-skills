@@ -13,20 +13,21 @@ description: >-
   execute-plan finishes a slice.
 license: Unlicense
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   portability: >-
     Written to the Agent Skills open standard. Body uses shell (git/gh/jq) rather than
     host-specific tools. Depends on the sibling skills pr-review-fix, create-pr, deslopify,
-    pr-checks-green, request-pr-review and jira-update-issue; if your host has no skill
-    support, read each SKILL.md where this file says to and follow it with the overrides
-    stated here. Team-specific reviewers live in the request-pr-review registry, never here.
+    pr-checks-green, request-pr-review, jira-update-issue and jira-transition; if your host
+    has no skill support, read each SKILL.md where this file says to and follow it with the
+    overrides stated here. Team-specific reviewers live in the request-pr-review registry,
+    never here.
 when_to_use: >-
   Use in a worktree whose feature branch is implemented and committed but has no PR yet,
   typically right after execute-plan, when you want review, sanity tests, push, PR, green CI,
   review request and ticket update done without being asked anything. Not for a branch that
   already has a PR (pr-shepherd handles later rounds), not for someone else's branch, and not
   for merging.
-argument-hint: "[base-branch]"
+argument-hint: "[base-branch] [--reviewers login1,login2]"
 allowed-tools:
   - Bash
   - Read
@@ -60,11 +61,11 @@ user-level "confirm before pushing" rule ask for. It covers:
 - creating **one** PR for this branch, **ready for review** (not draft)
 - setting reviewers on that PR
 - one Slack review request in the configured channel, with no preview step
-- one comment on the branch's ticket, with no preview step
+- one comment on the branch's ticket, and one status move to in review, with no preview step
 - starting and stopping local services the sanity suites need, per the repo's docs
 
-It does **not** cover: filing tickets (never, in any form), transitioning or editing the
-ticket, merging, approving, closing, draft flips, force pushes of any kind, `--no-verify`,
+It does **not** cover: filing tickets (never, in any form), editing the ticket or moving it
+anywhere but forward to in review, merging, approving, closing, draft flips, force pushes of any kind, `--no-verify`,
 disabling hooks or tests, killing processes this run didn't start, seeding anything remote,
 or `git reset --hard` / dropping a stash.
 
@@ -89,11 +90,12 @@ blocker and exit. Either way, release the lock. A missing ticket key or Jira tra
 
 ### Sub-skills
 
-Invoke `pr-review-fix`, `create-pr`, `deslopify`, `pr-checks-green`, `request-pr-review` and
-`jira-update-issue` by name through the host's skill mechanism, so a repo-local version of
-any of them wins. If the host has none, read `$SKILL_DIR/../<name>/SKILL.md` and follow it.
-`$SKILL_DIR` is the directory this file was loaded from; the usual fallbacks are
-`~/.claude/skills/pr-launch` and `~/.agents/skills/pr-launch`. **The overrides in each step
+Invoke `pr-review-fix`, `create-pr`, `deslopify`, `pr-checks-green`, `request-pr-review`,
+`jira-update-issue` and `jira-transition` by name through the host's skill mechanism, so a
+repo-local version of any of them wins. If the host has none, read
+`$SKILL_DIR/../<name>/SKILL.md` and follow it. `$SKILL_DIR` is the directory this file was
+loaded from; the usual fallbacks are
+`~/.agents/skills/pr-launch` or the host's own skills directory. **The overrides in each step
 replace the sub-skill's confirmation steps, and only those.**
 
 ### Progress checklist
@@ -244,12 +246,23 @@ Run **create-pr** with `$BASE`, and these overrides:
 Record `PR`. Add it to `state.json` immediately, so a crash after this point resumes rather
 than NOOPs.
 
-**Plan link.** If execute-plan's plan for this branch exists (find it the way pr-shepherd's
-Step 5 does: ticket key from the branch, in-repo plan doc, then `$PLANS_DIR`/`.plan-store`,
-then any plan location the user's agent instructions name), set this slice's PR-map row to
-`IN REVIEW` with the PR link. An in-repo plan → commit and plain-push now, then
-`HEAD_OID=$(git rev-parse HEAD)`. A plan outside the repo → edit in place, no commit. No plan
-or ambiguous → skip and say so.
+**Plan link.** Find execute-plan's plan for this branch the way pr-shepherd's Step 5 does
+(ticket key from the branch; in-repo plan doc, then `$PLANS_DIR` with `{repo}` expanded,
+then `$PLANS_ROOT` recursively, then `.plan-store`, then any plan location the user's agent
+instructions name). Then:
+
+- **Plan outside the repo** → set this slice's PR-map row to `IN REVIEW` with the PR link;
+  edit in place, no commit. pr-land sets `MERGED` after the merge.
+- **Plan inside the repo** → set this slice's row to `MERGED` with the PR link, in this PR
+  (a plan with no PR-map table keeps status in its `### PR N: … -- **STATUS**` headings:
+  change that marker, and add the PR link under the heading).
+  The default branch only sees that row when this PR merges, so it's true there by
+  construction and no post-merge commit is ever needed (a closed, unmerged PR never lands
+  it). If no other row (or heading) is left `PENDING` or `IN PROGRESS`, and every
+  `IN REVIEW`/`COMPLETED` one has a merged PR (`gh pr list --search "<KEY>" --state merged`),
+  also set those to `MERGED` and Overall to complete. Commit, plain-push, then
+  `HEAD_OID=$(git rev-parse HEAD)`.
+- No plan, or ambiguous → skip and say so.
 
 ## Step 5: Watch the checks, fix until green
 
@@ -275,7 +288,10 @@ the report and say that **pr-shepherd** handles them. This keeps one skill per r
 
 ▸ **Stage 7.**
 
-1. **Resolve reviewers.** If the PR already has requested reviewers (CODEOWNERS or branch
+1. **Resolve reviewers.** `--reviewers` given → add exactly those logins
+   (`gh pr edit "$PR" --add-reviewer <login>` each, minus you), and they are the people the
+   Slack message mentions (CODEOWNERS requests stay on GitHub, but aren't pinged). Skip to 2.
+   Otherwise, if the PR already has requested reviewers (CODEOWNERS or branch
    rules usually add them on create: `gh pr view "$PR" --json reviewRequests`), use those
    and skip to 2. Otherwise use the request-pr-review registry's optional
    `default_reviewers` key for this repo (see its `references/config.md`), minus you. Set them:
@@ -283,8 +299,10 @@ the report and say that **pr-shepherd** handles them. This keeps one skill per r
    but they aren't blockers while at least one succeeds.
 2. Run **request-pr-review** for `$PR` with these overrides:
    - **Its Step 3 (no reviewers):** only reached when the PR got no reviewers on create,
-     `default_reviewers` is missing, or every add failed. Use the logins from the ticket's or plan's named reviewers if they state
-     any; otherwise **BLOCKED** ("add `default_reviewers` for <owner/repo>").
+     `default_reviewers` is missing, or every add failed. Use the reviewers the ticket or plan
+     names, if any; otherwise **BLOCKED** ("pass --reviewers, or add `default_reviewers`
+     for <owner/repo>").
+   - **Its Step 4/5 with `--reviewers`:** mention exactly those logins.
    - **Its Step 4 (a login with no Slack ID):** write the person's plain name, no mention, and
      note it. Never guess an ID.
    - **Its Step 6 (confirm):** skipped.
@@ -305,6 +323,9 @@ Run **jira-update-issue** with these overrides:
 - No ticket key, ticket not found, or no Jira transport → its degrade path: print the
   comment and the command, note it. Not a blocker.
 
+Then run **jira-transition** `--to in_review --if-category new,indeterminate` (this run
+authorizes it). A NOOP or a missing transport is fine; note it.
+
 ## Step 9: Report and release
 
 A few plain lines:
@@ -314,7 +335,8 @@ A few plain lines:
 - CI result and fix attempts (or "no CI on this repo")
 - diagrams included, or why not
 - plan updated (path) or skipped (why)
-- reviewers set, Slack link, ticket comment link (or "printed, not posted" and why)
+- reviewers set, Slack link, ticket comment link (or "printed, not posted" and why), ticket
+  status move
 - early bot comments, if any, left for pr-shepherd
 
 Make sure the checklist matches: on DONE every stage is `completed`; on BLOCKED exactly one

@@ -1,0 +1,27 @@
+# ~/.config/pr-runner/config — read by pr-runner/scripts/sweep.sh
+# key=value, one per line. "~" expands to $HOME.
+
+# Folders holding your main checkouts (comma-separated). Worktrees are found through them.
+roots=~/repos
+
+# Only these repos (comma-separated owner/repo). Empty = every repo with a local checkout.
+repos=
+
+# Headless agent command; the prompt is appended as one argument. Empty = auto-detect, which
+# only works when exactly one known agent CLI is installed. Examples:
+#   agent=codex exec        agent=gemini -p        agent=claude -p
+#   agent=cursor-agent -p   agent=opencode run     agent=qwen -p
+# agent=
+
+# How skills are asked for: slash ("/<skill> args") or plain ("Use the <skill> skill. args").
+# Empty = the known default for the agent above.
+# prompt_style=
+
+# Merge approved, green PRs with pr-land. Off by default: this is what merges without you.
+auto_land=false
+
+# After pr-land merges a slice, start the plan's next unblocked slice (execute-plan --unattended).
+auto_next_slice=false
+
+notify=true
+timeout_min=120
