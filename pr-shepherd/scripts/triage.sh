@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Read-only snapshot of a PR for pr-shepherd: state, head, new feedback since a cutoff,
-# and the CI status of the current head. Prints one JSON document on stdout.
+# the CI status of the current head, and whether the head still merges cleanly into the
+# latest base. Prints one JSON document on stdout.
+#
+# Conflicts: GitHub's `mergeable` goes stale (it stays MERGEABLE for a while after the base
+# moves, and longer while the PR sits in a merge queue), so when run inside a checkout of the
+# PR's repo this script also fetches the base and test-merges with `git merge-tree`. The
+# fetch updates remote-tracking refs only; the working tree and branches are untouched.
+# `conflicting` is true when either GitHub or the local test-merge says so.
 #
 # Requires: gh (authenticated), jq
 # Usage:   scripts/triage.sh [--pr N] [--since ISO8601]
@@ -38,7 +45,29 @@ OWNER_REPO=$(jq -r '.url | split("/") | "\(.[3])/\(.[4])"' <<<"$PRJSON")
 NUM=$(jq -r .number <<<"$PRJSON")
 HEAD=$(jq -r .headRefOid <<<"$PRJSON")
 AUTHOR=$(jq -r .author.login <<<"$PRJSON")
+BASE=$(jq -r .baseRefName <<<"$PRJSON")
 [ -n "$SINCE" ] || SINCE=$(gh api "repos/$OWNER_REPO/commits/$HEAD" --jq '.commit.committer.date')
+
+# Local test-merge of the PR head into the freshly fetched base (git >= 2.38).
+local_merge() {
+  local remote base_oid out rc
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { jq -n '{checked:false, reason:"not in a git checkout"}'; return; }
+  remote=$(git remote -v | awk -v r="$OWNER_REPO" '$2 ~ ("[:/]" r "(\\.git)?/?$") {print $1; exit}')
+  [ -n "$remote" ] || { jq -n --arg r "$OWNER_REPO" '{checked:false, reason:("no remote points at " + $r)}'; return; }
+  git fetch -q "$remote" "$BASE" 2>/dev/null || { jq -n '{checked:false, reason:"fetch of the base failed"}'; return; }
+  base_oid=$(git rev-parse FETCH_HEAD)
+  if ! git cat-file -e "$HEAD^{commit}" 2>/dev/null; then
+    git fetch -q "$remote" "refs/pull/$NUM/head" 2>/dev/null || { jq -n '{checked:false, reason:"PR head not available locally"}'; return; }
+  fi
+  rc=0; out=$(git merge-tree --write-tree --name-only --no-messages "$base_oid" "$HEAD" 2>&1) || rc=$?
+  case $rc in
+    0) jq -n --arg b "$base_oid" '{checked:true, baseOid:$b, conflict:false, files:[]}' ;;
+    1) jq -n --arg b "$base_oid" --arg f "$(tail -n +2 <<<"$out")" \
+         '{checked:true, baseOid:$b, conflict:true, files:($f | split("\n") | map(select(length > 0)) | unique)}' ;;
+    *) jq -n --arg e "$out" '{checked:false, reason:("git merge-tree failed: " + $e)}' ;;
+  esac
+}
+LOCAL_MERGE=$(local_merge)
 
 BOT='(.user.type == "Bot") or (.user.login | endswith("[bot]"))'
 
@@ -67,7 +96,8 @@ jq -n \
   --arg since "$SINCE" \
   --argjson inline "$INLINE" \
   --argjson reviews "$REVIEWS" \
-  --argjson issue "$ISSUE" '
+  --argjson issue "$ISSUE" \
+  --argjson localMerge "$LOCAL_MERGE" '
   def bucket:
     if .__typename == "CheckRun" then
       if .status != "COMPLETED" then "pending"
@@ -97,6 +127,8 @@ jq -n \
       reviewDecision: $pr.reviewDecision,
       mergeable: $pr.mergeable,
       mergeStateStatus: $pr.mergeStateStatus,
+      localMerge: $localMerge,
+      conflicting: ($pr.mergeable == "CONFLICTING" or ($localMerge.conflict // false)),
       headRefOid: $pr.headRefOid,
       headRefName: $pr.headRefName,
       baseRefName: $pr.baseRefName,

@@ -132,7 +132,7 @@ Rules for keeping it truthful:
   `Rebasing onto main (skipped: replies only)`. On a NOOP, mark stage 1 `completed` with
   the reason, and mark every later stage completed as `(skipped)`.
 - **A new feedback round** (Step 8) puts stages 2 and 4–8 back to `pending` with a
-  `(round N)` suffix. Stage 3 doesn't repeat.
+  `(round N)` suffix. Stage 3 repeats only when the re-sweep finds a conflict.
 - **Blocked:** leave the current stage `in_progress` and rename it
   `<stage> (BLOCKED: <short reason>)`. Todo lists have no failed state, and an unfinished
   circle is the honest picture.
@@ -182,11 +182,21 @@ Write everything this run learns (PR number, head, cutoffs, findings, outcomes) 
 ```
 
 It reports the PR state, the remote head, new feedback since that head's committer date
-(excluding your own comments, with per-comment IDs), and the head's CI buckets.
+(excluding your own comments, with per-comment IDs), the head's CI buckets, and
+`conflicting`: whether the head still merges into the latest base.
+
+**Use `conflicting`, never GitHub's `mergeable` on its own.** GitHub keeps reporting
+`MERGEABLE`/`CLEAN` for a while after the base moves, and longer while the PR sits in a merge
+queue, so a run that trusts it can NOOP minutes before the queue drops the PR with
+`MERGE_CONFLICT`. The script fetches the base and test-merges the head with `git merge-tree`
+when it runs inside a checkout of the PR's repo. If `localMerge.checked` is false, run that
+test-merge yourself before deciding there's nothing to do:
+`git -C "$REPO" fetch "$REMOTE" "$BASE" && git -C "$REPO" merge-tree --write-tree --name-only FETCH_HEAD "$HEAD_OID"`
+(exit 1 = conflict).
 
 - `state` is not `OPEN` → `RESULT: NOOP`.
 - **No new feedback** (`feedback.human + feedback.bot == 0`), **no failing checks**, and
-  `mergeable` isn't `CONFLICTING` → `RESULT: NOOP (nothing new)`. Touch nothing.
+  `conflicting` is false → `RESULT: NOOP (nothing new)`. Touch nothing.
 - Anything else → carry on. Save `PR`, `HEAD_OID` (= `headRefOid`), `BASE`, and set
   `ROUND=1`, `FIX_ATTEMPTS=0`, `PUSHED=0`.
 
@@ -236,9 +246,9 @@ pr-address-feedback.
 - **Plan gate (its Step 5):** write the HTML report as the record, but **don't open it and
   don't wait**. Its path goes in the final summary.
 - **Nothing actionable** (no Fix now or Future work, no human thread needing a reply, CI not
-  failing, not `CONFLICTING`) → append the IDs to `handled.json` and finish as
+  failing, not `conflicting`) → append the IDs to `handled.json` and finish as
   `RESULT: NOOP (feedback needed no action)`.
-- **Only replies needed** (Answer/Skip, no code change, CI not failing, not `CONFLICTING`) →
+- **Only replies needed** (Answer/Skip, no code change, CI not failing, not `conflicting`) →
   skip to Step 9. Don't rebase or push just to post replies.
 
 ## Step 4: Rebase (round 1 only)
@@ -328,7 +338,11 @@ Review bots often post *after* CI. Reviewers may also have commented while you w
 
 Drop the items already in `handled.json`. If anything is left, or `$LOCK/rerun` exists
 (remove it), then `ROUND+=1`. At `ROUND > 3` → **BLOCKED**. Otherwise go back to **Step 3**
-(no rebase this time), then Steps 5–8.
+(no rebase this time, unless `conflicting`; see below), then Steps 5–8.
+
+The base keeps moving while CI runs. If this sweep reports `conflicting`, rebase again
+(Step 4, even in a later round), then Steps 5–8. That counts as a round. Never finish a run
+as DONE or NOOP while `conflicting` is true.
 
 ## Step 9: Close out on the PR
 
