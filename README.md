@@ -52,6 +52,7 @@ What that means in practice, and what every skill here sticks to:
 | [`my-open-prs`](my-open-prs/) | Daily triage of **your** open PRs: repo, link, title, status, action needed, and dependencies — ordered oldest / unblocked first. Classification via `gh` + bundled script (draft, awaiting review, feedback received, changes requested, approved, conflicted). Read-only. | `/my-open-prs [--owner ORG]` |
 | [`pre-groom`](pre-groom/) | Pre-grooms Jira tickets for refinement: completeness, codebase impact (including sibling repos and linked tickets), Fibonacci estimate, and a reviewed Jira write-back. Project→checkout maps and Jira settings live in `$HOME/.pre-groom/` only — never writes config into repos. | `/pre-groom [TICKET-123 … \| filter=<id>]` |
 | [`deslopify`](deslopify/) | Strips AI slop and corporate filler from Jira tickets, Slack messages, emails, and specs — outputting dense summaries with extracted scope, subtasks, and dependencies. For Jira issues, optionally replaces summary and description after archiving the originals in a comment. Settings live in `$HOME/.deslopify/` only. | `/deslopify [TICKET-123 \| pasted text] [--jira \| --slack \| --auto]` |
+| [`dev-services`](dev-services/) | Starts, watches and stops a repo's long-running local services (emulators, dev servers, containers, e2e runners) safely. Reads how this repo runs them from a per-user recipe in `~/.config/dev-services/<repo>.md` or from the repo's docs, never from a guess. Checks every port and container and who holds it before starting, **never kills or reseeds what another worktree or session started**, runs each service in a visible pane (Herdr, tmux, zellij) with a log file, waits on the run's own ready and failure lines instead of sleeping, and tears down everything it started. Ends with a `RESULT:` line. | `/dev-services [start\|stop\|restart\|status] [service ...]` |
 
 ### Common workflows
 
@@ -73,6 +74,7 @@ What that means in practice, and what every skill here sticks to:
 | Approved PR, merge it and clean up | `pr-land` |
 | What would the loop do with my PRs right now? | `pr-runner` (dry run) |
 | Morning / ad-hoc triage of PRs you opened | `my-open-prs` |
+| Bring up local emulators or a dev server without stepping on another worktree | `dev-services` |
 | Pre-PR local review rounds | `pr-review-fix` (after `execute-plan`; optional instead of or before `pr-code-review-batch`) |
 
 ## Install
