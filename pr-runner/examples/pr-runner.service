@@ -1,5 +1,5 @@
 [Unit]
-Description=pr-runner sweep (dispatch pr-shepherd / pr-land on your open PRs)
+Description=pr-runner sweep (dispatch pr-shepherd / pr-queue-for-merge on your open PRs)
 
 [Service]
 Type=oneshot

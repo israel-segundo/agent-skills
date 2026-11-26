@@ -281,7 +281,7 @@ completed-PR summary. Prefer scoped reads within a PR.
 | **create-pr** | Opens structured GitHub PR from current branch |
 | **pr-launch** | Unattended handoff: review, sanity tests, push, ready PR, green CI, review request, ticket update |
 | **jira-transition** | Moves the ticket to in progress at Phase 2 |
-| **pr-land** | After approval: merge, plan row MERGED, cleanup, next slice |
+| **pr-queue-for-merge** | After approval: merge queue (re-queues flakes), plan row MERGED, ticket Done, cleanup, next slice |
 
 ## Skill layout
 

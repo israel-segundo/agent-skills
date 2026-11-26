@@ -1,7 +1,7 @@
 # Branch and worktree setup (Phase 2)
 
 Each PR slice gets its own branch **and its own worktree**, created from the latest default
-branch. One worktree per PR is what lets pr-launch, pr-shepherd, pr-land and pr-runner work on
+branch. One worktree per PR is what lets pr-launch, pr-shepherd, pr-queue-for-merge and pr-runner work on
 several PRs at once without stepping on each other (their locks and state live in the
 worktree's git dir).
 
@@ -34,7 +34,7 @@ that fits the slice (`feat`, `fix`, `chore`, `refactor`, `test`, `docs`).
    `-pr<N>` suffix.
 3. **Default:** `<login>/<type>/<key-lower>-<slug>-pr<N>`.
 
-Multi-PR plans always carry the slice number somewhere in the name (`-pr<N>`) so pr-land can
+Multi-PR plans always carry the slice number somewhere in the name (`-pr<N>`) so pr-queue-for-merge can
 match a branch back to its PR-map row.
 
 ## 3. Worktree path

@@ -17,10 +17,10 @@ repos=
 # Empty = the known default for the agent above.
 # prompt_style=
 
-# Merge approved, green PRs with pr-land. Off by default: this is what merges without you.
+# Merge approved, green PRs with pr-queue-for-merge. Off by default: this is what merges without you.
 auto_land=false
 
-# After pr-land merges a slice, start the plan's next unblocked slice (execute-plan --unattended).
+# After pr-queue-for-merge merges a slice, start the plan's next unblocked slice (execute-plan --unattended).
 auto_next_slice=false
 
 notify=true

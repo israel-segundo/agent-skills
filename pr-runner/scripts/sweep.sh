@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-runner: one sweep over your open PRs. Decides, per PR, whether pr-shepherd or pr-land
+# pr-runner: one sweep over your open PRs. Decides, per PR, whether pr-shepherd or pr-queue-for-merge
 # should run in that PR's local worktree, and (with --dispatch) runs it headlessly through
 # your agent CLI, one PR at a time. Deterministic: no agent is started unless there is work.
 #
@@ -120,7 +120,7 @@ worktree_for() {  # worktree_for <main checkout> <branch> → path or empty
 busy() {  # busy <worktree> → 0 when another skill holds a fresh lock there
   local gd; gd=$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null) || return 1
   local s started stale
-  for s in execute-plan pr-launch pr-shepherd pr-land; do
+  for s in execute-plan pr-launch pr-shepherd pr-queue-for-merge; do
     if [ -d "$gd/$s/lock" ]; then
       started=$(cat "$gd/$s/lock/started" 2>/dev/null || stat -c %Y "$gd/$s/lock")
       stale=10800; [ "$s" = execute-plan ] && stale=21600
@@ -158,7 +158,7 @@ while IFS= read -r pr; do
        || [ "$ci" = FAILURE ] || [ "$ci" = ERROR ]; then
     skill=pr-shepherd
   elif [ "$status" = Approved ] && [ "$ci" != PENDING ] && [ "$ci" != EXPECTED ]; then
-    if [ "$auto_land" = true ]; then skill=pr-land
+    if [ "$auto_land" = true ]; then skill=pr-queue-for-merge
     else line "$id" skip "approved; auto_land is off"; continue; fi
   else
     line "$id" skip "$action"; continue
@@ -199,7 +199,7 @@ while IFS= read -r pr; do
   fi
 
   # next plan slice after a landed PR
-  if [ "$skill" = pr-land ] && [ "$kind" = DONE ] && [ "$auto_next_slice" = true ]; then
+  if [ "$skill" = pr-queue-for-merge ] && [ "$kind" = DONE ] && [ "$auto_next_slice" = true ]; then
     next=$(grep -E '^NEXT: ' "$log" | tail -1 || true)
     if [ -n "$next" ] && [ "$next" != "NEXT: none" ]; then
       plan=$(printf '%s' "$next" | sed -E 's/^NEXT: (.*) PR [^ ]+$/\1/')

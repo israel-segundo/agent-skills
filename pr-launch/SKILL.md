@@ -252,7 +252,7 @@ then `$PLANS_ROOT` recursively, then `.plan-store`, then any plan location the u
 instructions name). Then:
 
 - **Plan outside the repo** → set this slice's PR-map row to `IN REVIEW` with the PR link;
-  edit in place, no commit. pr-land sets `MERGED` after the merge.
+  edit in place, no commit. pr-queue-for-merge sets `MERGED` after the merge.
 - **Plan inside the repo** → set this slice's row to `MERGED` with the PR link, in this PR
   (a plan with no PR-map table keeps status in its `### PR N: … -- **STATUS**` headings:
   change that marker, and add the PR link under the heading).

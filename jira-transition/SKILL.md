@@ -8,7 +8,7 @@ description: >-
   done status. A target that is already reached, or not allowed from the current status, is
   a no-op, not an error. Ends with a parseable RESULT line. Use when a ticket's status
   should follow the work (starting a slice, opening a PR, merging the last slice),
-  standalone or as a building block inside execute-plan, pr-launch or pr-land.
+  standalone or as a building block inside execute-plan, pr-launch or pr-queue-for-merge.
 license: Unlicense
 metadata:
   version: "1.0.0"
@@ -35,7 +35,7 @@ One status change on one issue. Nothing else: no new issues, no field edits, no 
 
 - **Standalone** (a user invoked it): show the issue, its current status and the transition
   you'd make, then wait for a yes.
-- **Called by an orchestrator** (execute-plan, pr-launch, pr-land): the caller's standing
+- **Called by an orchestrator** (execute-plan, pr-launch, pr-queue-for-merge): the caller's standing
   authorization covers the transition. No preview.
 
 ## Arguments
