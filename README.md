@@ -87,9 +87,12 @@ What that means in practice, and what every skill here sticks to:
 ./install.sh --host ~/.foo/skills   # also target an extra path
 ```
 
-Idempotent: re-run after adding a skill, editing one, moving this repo, or installing a
-new agent. It computes its own source path, replaces stale links, and skips hosts that
-aren't installed.
+Idempotent: re-run after adding a skill, editing one, deleting one, moving this repo, or
+installing a new agent. It computes its own source path, replaces stale links, and skips
+hosts that aren't installed. A skill deleted from this repo is pruned from every host: its
+link (one that points into this repo) and its copy (one carrying the
+`.installed-by-agent-skills` marker that `--copy` writes). Nothing else in a host directory
+is touched, including copies made before the marker existed.
 
 ### Cursor (global)
 

@@ -3,8 +3,13 @@
 #
 # Canonical copy lives here; each host gets a symlink (or a copy with --copy, for hosts
 # whose skill discovery doesn't follow symlinks — Gemini CLI and Cursor's CLI have both
-# had that bug). Idempotent: re-run after adding a skill, editing one, or installing a
-# new host.
+# had that bug). Idempotent: re-run after adding a skill, editing one, deleting one, or
+# installing a new host.
+#
+# Deleted skills are pruned from every host: a symlink that points into this repo at a
+# directory that is no longer a skill, and a copy carrying this repo's install marker for a
+# skill that no longer exists. Nothing else in a host dir is touched. Copies made before the
+# marker existed can't be told apart from your own skills, so they are left alone.
 #
 #   ./install.sh                 # symlink into every host dir that exists
 #   ./install.sh --cursor        # Cursor global only (~/.cursor/skills, ~/.agents/skills)
@@ -90,6 +95,29 @@ echo
 
 run() { if [ -n "$DRY" ]; then echo "    would: $*"; else "$@"; fi; }
 
+# Written into every copy (--copy) so a later run can tell our copies from anything else.
+MARKER=".installed-by-agent-skills"
+
+# Remove what this repo installed into $1 for skills that no longer exist here.
+prune_host() {
+  local host="$1" entry name target
+  for entry in "$host"/* "$host"/.[!.]*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    name="${entry##*/}"
+    if [ -L "$entry" ]; then
+      target="$(readlink "$entry")"
+      case "$target" in "$SRC"/*) ;; *) continue ;; esac   # not ours
+      [ -f "$target/SKILL.md" ] && continue                 # still a skill
+      run rm -f "$entry"
+      echo "    prune $name  (link to a skill deleted from this repo)"
+    elif [ -d "$entry" ] && [ -f "$entry/$MARKER" ] && [ "$(cat "$entry/$MARKER")" = "$SRC" ]; then
+      [ -f "$SRC/$name/SKILL.md" ] && continue
+      run rm -rf "$entry"
+      echo "    prune $name  (copy of a skill deleted from this repo)"
+    fi
+  done
+}
+
 for host in "${HOSTS[@]}"; do
   if ! host_installed "$host"; then
     echo "skip  $host  (host not installed)"
@@ -112,9 +140,11 @@ for host in "${HOSTS[@]}"; do
       echo "    link $name"
     else
       run cp -R "$skill" "$dest"
+      if [ -n "$DRY" ]; then echo "    would: write $dest/$MARKER"; else printf '%s' "$SRC" > "$dest/$MARKER"; fi
       echo "    copy $name"
     fi
   done
+  prune_host "$host"
 done
 
 echo
